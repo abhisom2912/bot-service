@@ -1,6 +1,5 @@
 from operator import itemgetter
 import fitz
-import json
 import re
 import numpy as np
 
@@ -72,7 +71,6 @@ def headers_para(doc):
     first = True  # boolean operator for first header
     previous_s = {}  # previous span
     header_contents = {}
-    previous_header_num = ''
     header = '-1 start_of_file'
     header_contents[header] = ''
     for page in doc:
@@ -179,15 +177,18 @@ def create_final_output(header_contents):
             output = output + get_needed_hash(key.split(' ')[0], max_level) + ' ' + header.strip() + '\n'
         if header_contents[key].strip() != '':
             output = output + header_contents[key].strip() + '\n'
-    print(output)
+    return output
+
+def convert_to_md_format(document):
+    doc = fitz.open(document)
+
+    header_contents = headers_para(doc)
+    return create_final_output(header_contents)
 
 def main():
     # print(validate_new_num('3','2.1.1')) Dfyn_V2_Whitepaper-pages-4-15 whitepaper-v3.pdf
     document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
-    doc = fitz.open(document)
-
-    header_contents = headers_para(doc)
-    create_final_output(header_contents)
+    print(convert_to_md_format(document))
 
 
 if __name__ == '__main__':

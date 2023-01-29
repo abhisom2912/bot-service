@@ -389,7 +389,7 @@ def start_discord_bot(df, document_embeddings):
         if message.author == client.user:
             return
 
-        if message.content.lower().find('@1064874391084728324'.lower()) != -1:
+        if message.content.lower().find('@1064872402003169312'.lower()) != -1:
             answer = answer_query_with_context(message.content, df, document_embeddings)
             await message.channel.send(answer)
 

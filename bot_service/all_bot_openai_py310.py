@@ -428,6 +428,12 @@ class TelegramBot(multiprocessing.Process):
                 echo_all(updates, self.df, self.document_embeddings)
             time.sleep(0.5)
 
+def train_bot(title, heading, content):
+    # take title, heading and content and count the number of tokens required
+    # create an embedding against this
+    # append the output to the outputs in the database
+    # append the embedding to the embedding in the database
+    print("training")
 
 class DiscordBot(multiprocessing.Process):
     def __init__(self, df, document_embeddings):

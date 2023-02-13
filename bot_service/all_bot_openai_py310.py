@@ -17,6 +17,7 @@ import requests
 import json
 import multiprocessing
 import ssl
+from itertools import islice
 
 try:
     _create_unverified_https_context = ssl._create_unverified_context
@@ -38,6 +39,7 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 MAX_SECTION_LEN = 500
 SEPARATOR = "\n* "
 ENCODING = "cl100k_base"
+min_token_limit = 10
 
 encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
@@ -215,18 +217,24 @@ def create_data_for_docs():
         - (1 if len(c) == 0 else 0)
         for h, c in zip(nheadings, ncontents)
     ]
-    outputs += [(title, h, c, t) if t<max_len
-                else (title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))
-                for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens)]
+    # outputs += [(title, h, c, t) if t<max_len
+    #             else (title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))
+    #             for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens)]
+    for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens):
+        if (t<max_len and t>min_token_limit):
+            outputs += [(title,h,c,t)]
+        elif(t>=max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
     return outputs
 
 def final_data_for_openai(outputs):
     res = []
     res += outputs
     df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
-    df = df[df.tokens>40]
+    # df = df[df.tokens>10] # was initially 40 (need to ask Abhishek why)
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
+    df = df.set_index(["title", "heading"])
     return df
 
 
@@ -337,7 +345,7 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
         chosen_sections_indexes.append(str(section_index))
 
     # Useful diagnostic information
-    print("Selected {len(chosen_sections)} document sections:")
+    print("Selected ", len(chosen_sections), " document sections:")
     print("\n".join(chosen_sections_indexes))
 
     header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
@@ -367,12 +375,92 @@ def answer_query_with_context(
 
 def initialize():
     outputs = create_data_for_docs()
+    print(outputs)
     df = final_data_for_openai(outputs)
     print(df.head)
     df = df.set_index(["title", "heading"])
     document_embeddings = compute_doc_embeddings(df)
     print(len(df), " rows in the data.")
     return outputs, df, document_embeddings
+
+def calculate_new_output(title, heading, content):
+    nheadings, ncontents, ntitles = [], [], []
+    outputs = []
+    max_len = 1500
+    nheadings.append(heading)
+    ncontents.append(content)
+    ntitles.append(title)
+    ncontent_ntokens = [
+        count_tokens(c)
+        + 3
+        + count_tokens(" ".join(h.split(" ")[1:-1]))
+        - (1 if len(c) == 0 else 0)
+        for h, c in zip(nheadings, ncontents)
+    ]
+
+    for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens):
+        if (t<max_len and t>min_token_limit):
+            outputs += [(title,h,c,t)]
+        elif(t>=max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
+
+    return outputs
+
+def add_data(bot_id, title, heading, content):
+    outputs, embeddings = retrieve_from_db(bot_id)
+    # check to ensure that the output does not already include this entry
+    for x in outputs:
+        if(title == x[0] and heading == x[1] and content == x[2]):
+            print("Data already present")
+            return "Data already present"
+    # take title, heading and content and fetch the new outputs
+    new_outputs = calculate_new_output(title, heading, content)
+    new_df = final_data_for_openai(new_outputs)
+    # create an embedding against the newly added data
+    new_document_embeddings = compute_doc_embeddings(new_df)
+    # append the new output to the outputs in the database
+    outputs.extend(new_outputs)
+    # append the new embedding to the embedding in the database
+    embeddings.update(new_document_embeddings)
+    return update_in_db(outputs, embeddings, bot_id)
+
+def update_data(bot_id, title, heading, updated_content):
+    outputs, embeddings = retrieve_from_db(bot_id)
+    index_to_delete = -1
+    for i, x in enumerate(outputs):
+        if(title == x[0] and heading == x[1]):
+            if updated_content == x[2]:
+                return "Updated data already present"
+            else:
+                index_to_delete = i
+    if(index_to_delete > 0):
+        new_outputs = calculate_new_output(title, heading, updated_content)
+        new_df = final_data_for_openai(new_outputs)
+        # create an embedding against the newly added data
+        new_document_embeddings = compute_doc_embeddings(new_df)
+        # append the new output to the outputs in the database
+        outputs.extend(new_outputs)
+        # append the new embedding to the embedding in the database
+        embeddings.update(new_document_embeddings)
+        # deleting the existing entry
+        updated_outputs, updated_embeddings = delete_entries_by_index(outputs, embeddings, index_to_delete)
+    return update_in_db(updated_outputs, updated_embeddings, bot_id)
+
+def delete_data(bot_id, title, heading):
+    outputs, embeddings = retrieve_from_db(bot_id)
+    index_to_delete = -1
+    for i, x in enumerate(outputs):
+        if(title == x[0] and heading == x[1]):
+            index_to_delete = i
+    if index_to_delete<0:
+        return "Title and heading not found"
+    updated_outputs, updated_embeddings = delete_entries_by_index(outputs, embeddings, index_to_delete)
+    return update_in_db(updated_outputs, updated_embeddings, bot_id)
+
+def delete_entries_by_index(outputs, embeddings, index):
+    outputs.pop(index)
+    # del embeddings[next(islice(embeddings, index, None))]
+    return outputs, embeddings
 
 def get_url(url):
     response = requests.get(url)
@@ -428,13 +516,6 @@ class TelegramBot(multiprocessing.Process):
                 echo_all(updates, self.df, self.document_embeddings)
             time.sleep(0.5)
 
-def train_bot(title, heading, content):
-    # take title, heading and content and count the number of tokens required
-    # create an embedding against this
-    # append the output to the outputs in the database
-    # append the embedding to the embedding in the database
-    print("training")
-
 class DiscordBot(multiprocessing.Process):
     def __init__(self, df, document_embeddings):
         super(DiscordBot, self).__init__()
@@ -486,21 +567,33 @@ def send_to_db(_id, description, outputs, document_embeddings):
 def retrieve_from_db(_id):
     response = requests.get(config['BASE_API_URL'] + "document/" + _id)
     json_response = response.json()
-    data = json_response['data']
-    df = final_data_for_openai(data)
-    df = df.set_index(["title", "heading"])
+    outputs = json_response['data']
     document_embeddings = tuplify_dict_keys(json_response['embeddings'])
-    return df, document_embeddings
+    return outputs, document_embeddings
+
+def update_in_db(outputs, embeddings, _id):
+    # update the entry in the database
+    data_to_update = {"data": outputs, "embeddings": untuplify_dict_keys(embeddings)}
+    response = requests.put(config['BASE_API_URL'] + "document/" + _id, json=data_to_update)
+    return response
 
 def main():
     # outputs, df, document_embeddings = initialize()
-    # response_after_send = send_to_db(bot_id, bot_description, outputs, document_embeddings)
-    df_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
+    # response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
+
     # p = TelegramBot(df, document_embeddings)
     # p.start()
 
+    # response_after_adding_data = add_data(bot_id, "Router Protocol", "FAQs", "What is Voyager? Voyager is a cross-chain swapping engine that allows for cross-chain asset transfers as well as cross-chain sequencing of asset transfers and arbitrary instruction transfers. What is Router Chain? The Router chain is a layer 1 blockchain that leverages tendermint’s Byzantine Fault Tolerant (BFT) consensus engine. As a Proof of Stake (PoS) blockchain, the Router chain is primarily run by a network of validators with economic incentives to act honestly. The Router chain is built using the Cosmos SDK and encapsulates all the features of Cosmos, including fast block times, robust security mechanisms, and, most importantly, CosmWasm - a security-first smart contract platform. What is CrossTalk? Router's CrossTalk library is an extensible cross-chain framework that enables seamless state transitions across multiple chains. In simple terms, this library leverages Router's infrastructure to allow contracts on one chain to pass instructions to contracts deployed on some other chain without the need for deploying any contracts on the Router chain. The library is structured in a way that it can be integrated seamlessly into your development environment to allow for cross-chain message passing without disturbing other parts of your product. When to use CrossTalk? CrossTalk is best suited for cross-chain dApps that do not require custom bridging logic or any data aggregation layer in the middle - developers can simply plug into this framework and transform their existing single-chain or multi-chain dApps into cross-chain dApps. What is ROUTE Token? Router Protocol's native cryptographically-secured digital token ROUTE is a transferable representation of a functional asset that will be used as the gas and governance token in the Router ecosystem. What is the Utility of ROUTE token? It will initially be used as gas currency on Router chain, paying transaction costs for using CrossTalk library, as well as for governance decisions and validator incentives.")
+    
+    # response_after_adding_data = add_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "For cross-chain instruction transfers that do not require any logic in the middle or do not need any accounting layer, Router's CrossTalk framework is the best option. It is an easy-to-implement cross-chain smart contract library that does not require you to deploy any new contract - only a few lines of code need to be included, and your single-chain contract will become a cross-chain contract. CrossTalk's ability to transfer multiple contract-level instructions in a single cross-chain call makes it a very powerful tool.")
+    response_after_updating_data = update_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "CrossTalk is a cross-chain messaging framework on Router Protocol.")
+    outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
+    df_from_database = final_data_for_openai(outputs_from_database)
     p = DiscordBot(df_from_database, document_embeddings_from_database)
     p.start()
+    # response_after_deleting_data = delete_data(bot_id, "Router Protocol - Voyager", "What is Voyager?")
+    
 
 
 if __name__ == '__main__':

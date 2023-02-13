@@ -1,7 +1,10 @@
 from operator import itemgetter
 import fitz
-import json
+import re
+import numpy as np
 
+
+BOLD_FLAGS = 16
 
 def fonts(doc, granularity=False):
     """Extracts fonts and their usage in PDF documents.
@@ -38,6 +41,17 @@ def fonts(doc, granularity=False):
 
     return font_counts, styles
 
+def get_para_length(doc):
+    length = []
+    for page in doc:
+        blocks = page.get_text("dict")["blocks"]
+        for b in blocks:  # iterate through the text blocks
+            if b['type'] == 0:  # block contains text
+                for l in b["lines"]:  # iterate through the text lines
+                    for s in l["spans"]:  # iterate through the text spans
+                        length.append(s['bbox'][2] - s['bbox'][0])
+
+    return np.percentile(length, 90)
 
 def font_tags(font_counts, styles):
     """Returns dictionary with font sizes as keys and tags as value.
@@ -64,16 +78,23 @@ def font_tags(font_counts, styles):
         idx += 1
         if size == p_size:
             idx = 0
-            size_tag[size] = '<p>'
+            size_tag[size] = ''
         if size > p_size:
-            size_tag[size] = '<h{0}>'.format(idx)
+            size_tag[size] = get_needed_hash(idx)
         elif size < p_size:
-            size_tag[size] = '<s{0}>'.format(idx)
+            size_tag[size] = ''
 
-    return size_tag
+    return p_size, size_tag
 
+def get_needed_hash(req_no_of_hash):
+    no_hash = 0
+    hash_string = ''
+    while no_hash < req_no_of_hash:
+        hash_string = hash_string + '#'
+        no_hash = no_hash + 1
+    return hash_string
 
-def headers_para(doc, size_tag):
+def headers_para(doc, size_tag, para_size, length):
     """Scrapes headers & paragraphs from PDF and return texts with element tags.
     :param doc: PDF document to iterate through
     :type doc: <class 'fitz.fitz.Document'>
@@ -85,7 +106,10 @@ def headers_para(doc, size_tag):
     header_para = []  # list with headers and paragraphs
     first = True  # boolean operator for first header
     previous_s = {}  # previous span
-
+    header_contents = {}
+    header = '-1 start_of_file'
+    header_contents[header] = ''
+    previous_header_hash = ''
     for page in doc:
         blocks = page.get_text("dict")["blocks"]
         for b in blocks:  # iterate through the text blocks
@@ -97,13 +121,14 @@ def headers_para(doc, size_tag):
                 for l in b["lines"]:  # iterate through the text lines
                     for s in l["spans"]:  # iterate through the text spans
                         if s['text'].strip():  # removing whitespaces:
+                            if "Notation" in s['text'] or "What is a Tick?" in s['text']:
+                                print('check ' + s['text'] + ' ' + str(s['font']) + ' ' + str(s['flags']) + ' ' + str(s['size']) + ' ' + str(s['color']))
                             if first:
                                 previous_s = s
                                 first = False
                                 block_string = size_tag[s['size']] + s['text']
                             else:
-                                if s['size'] == previous_s['size']:
-
+                                if s['size'] == previous_s['size'] and s['flags'] == previous_s['flags']:
                                     if block_string and all((c == "|") for c in block_string):
                                         # block_string only contains pipes
                                         block_string = size_tag[s['size']] + s['text']
@@ -114,40 +139,71 @@ def headers_para(doc, size_tag):
                                         block_string += " " + s['text']
 
                                 else:
-                                    header_para.append(block_string)
+                                    if s['size'] > para_size and block_string.strip() != '' and not(block_string.strip().isdigit()):
+                                        header = size_tag[s['size']] + block_string
+                                        header_contents[header] = ''
+                                        previous_header_hash = size_tag[s['size']]
+                                    # if same size as paragraph, check if there is bolding
+                                    # if it is bold then we need to check that it is not just a digit or an empty string
+                                    # check if the string starts with a caps
+                                    # if it occupies full line, then again ignore as header
+                                    elif check_bold_headers(length, para_size, s):
+                                        header = previous_header_hash + '#' + s['text']
+                                        header_contents[header] = ''
+                                    else:
+                                        header_contents[header] = header_contents[header] + ' ' + block_string
                                     block_string = size_tag[s['size']] + s['text']
 
                                 previous_s = s
 
-                    # new block started, indicating with a pipe
-                    block_string += "|"
+                if block_string != '' and not re.match(r'^[_\W]+$', block_string) and not(block_string.strip().isdigit()):
+                    if s['size'] > para_size:
+                        header = block_string
+                        header_contents[header] = ''
+                        previous_header_hash = size_tag[s['size']]
+                    elif check_bold_headers(length, para_size, s):
+                        header = previous_header_hash + '#' + block_string
+                        header_contents[header] = ''
+                    else:
+                        header_contents[header] = header_contents[header] + block_string
+    return header_contents
 
-                header_para.append(block_string)
 
-    return header_para
+def check_bold_headers(length, para_size, s):
+    try:
+        return_value = s['size'] == para_size and s['flags'] > BOLD_FLAGS and s['text'].strip() != '' and not (s['text'].strip().isdigit()) \
+                   and (s['text'][0].isupper() or (s['text'][0].isdigit() and s['text'].split(' ', 1)[1][0].isupper())) and (s['bbox'][2] - s['bbox'][0]) < length
+    except IndexError:
+        return False
+    return return_value
 
+
+
+def create_final_output(header_contents):
+    output = ''
+
+    for key in header_contents:
+        if key.strip()!= '' and 'start_of_file' not in key:
+            output = output + key + ' ' + '\n'
+        if header_contents[key].strip() != '':
+            output = output + header_contents[key].strip() + '\n'
+    return output
 
 def main():
 
-    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper.pdf'
+    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
     doc = fitz.open(document)
+
+    para_length = get_para_length(doc)
 
     font_counts, styles = fonts(doc, granularity=False)
 
-    size_tag = font_tags(font_counts, styles)
+    para_size, size_tag = font_tags(font_counts, styles)
 
-    elements = headers_para(doc, size_tag)
-
-    with open("doc.json", 'w') as json_out:
-        json.dump(elements, json_out)
+    elements = headers_para(doc, size_tag, para_size, para_length)
+    final_output = create_final_output(elements)
+    print(final_output)
 
 
 if __name__ == '__main__':
     main()
-
-
-# {'number': 13, 'type': 0, 'bbox': (93.54299926757812, 577.9452514648438, 233.81109619140625, 588.2067260742188), 'lines': [{'spans': [
-# {'size': 9.962599754333496, 'flags': 20, 'font': 'CMSSBX10', 'color': 0, 'ascender': 0.7799999713897705, 'descender': -0.25, 'text': 'DApp', 'origin': (93.54299926757812, 585.716064453125), 'bbox': (93.54299926757812, 577.9452514648438, 119.62509155273438, 588.2067260742188)},
-# {'size': 9.962599754333496, 'flags': 4, 'font': 'CMSS10', 'color': 0, 'ascender': 0.7590000033378601, 'descender': -0.25, 'text': ' Decentralized Application.', 'origin': (119.62509155273438, 585.716064453125), 'bbox': (119.62509155273438, 578.1544799804688, 233.81109619140625, 588.2067260742188)}], 'wmode': 0, 'dir': (1.0, 0.0), 'bbox': (93.54299926757812, 577.9452514648438, 233.81109619140625, 588.2067260742188)}]}
-# {'number': 0, 'type': 0, 'bbox': (93.54299926757812, 95.73521423339844, 207.66456604003906, 105.99668884277344), 'lines': [{'spans': [
-# {'size': 9.962599754333496, 'flags': 20, 'font': 'CMSSBX10', 'color': 0, 'ascender': 0.7799999713897705, 'descender': -0.25, 'text': '1.2.1', 'origin': (93.54299926757812, 103.50604248046875), 'bbox': (93.54299926757812, 95.73521423339844, 116.07839965820312, 105.99668884277344)}], 'wmode': 0, 'dir': (1.0, 0.0), 'bbox': (93.54299926757812, 95.73521423339844, 116.07839965820312, 105.99668884277344)}, {'spans': [{'size': 9.962599754333496, 'flags': 20, 'font': 'CMSSBX10', 'color': 0, 'ascender': 0.7799999713897705, 'descender': -0.25, 'text': 'Dfyn V1 Features', 'origin': (127.03726196289062, 103.50604248046875), 'bbox': (127.03726196289062, 95.73521423339844, 207.66456604003906, 105.99668884277344)}], 'wmode': 0, 'dir': (1.0, 0.0), 'bbox': (127.03726196289062, 95.73521423339844, 207.66456604003906, 105.99668884277344)}]}

@@ -1,11 +1,13 @@
-
 import discord
+import json
+import requests
+import time
+import urllib
 from transformers import GPT2TokenizerFast
 
 import numpy as np
 from github import Github
 import os
-import time
 import pyparsing as pp
 import openai
 import pandas as pd
@@ -15,7 +17,8 @@ from typing import List
 from typing import Dict
 from typing import Tuple
 import nltk
-from pdf_parse_seq import *
+
+from gitbook_scraper import *
 
 nltk.download('punkt')
 
@@ -39,112 +42,6 @@ COMPLETIONS_API_PARAMS = {
     "model": COMPLETIONS_MODEL,
 }
 
-
-def count_tokens(text: str) -> int:
-    """count the number of tokens in a string"""
-    return len(tokenizer.encode(text))
-
-def find_between( s, first, last ):
-    try:
-        start = s.index( first ) + len( first )
-        end = s.rindex( last, start )
-        return s[start:end]
-    except ValueError:
-        return ""
-
-def reduce_long(
-        long_text: str, long_text_tokens: bool = False, max_len: int = 590
-) -> str:
-    """
-    Reduce a long text to a maximum of `max_len` tokens by potentially cutting at a sentence end
-    """
-    if not long_text_tokens:
-        long_text_tokens = count_tokens(long_text)
-    if long_text_tokens > max_len:
-        sentences = sent_tokenize(long_text.replace("\n", " "))
-        ntokens = 0
-        for i, sentence in enumerate(sentences):
-            ntokens += 1 + count_tokens(sentence)
-            if ntokens > max_len:
-                return ". ".join(sentences[:i][:-1]) + "."
-
-    return long_text
-
-def find_all(s, ch):
-    previous_ind = 0
-    array = []
-    length = len(s)
-    while 1:
-        try:
-            ind = s.index(ch)
-            array.append(ind + previous_ind)
-            s = s[ind + len(ch):length]
-            previous_ind = previous_ind + ind + len(ch)
-        except ValueError:
-            break
-    return array
-
-def remove_unwanted_char(s):
-    code_separator = "```"
-    index_array = find_all(s, code_separator)
-    i = 0
-    while i < len(index_array):
-        start_index = index_array[i]
-        i = i+1
-        end_index = index_array[i]
-        orig_string = s[start_index:end_index]
-        replaced_string = orig_string.replace('#', '--')
-        s = s.replace(orig_string, replaced_string)
-        i = i+1
-    return s
-
-def get_needed_hash(s):
-    s_array = s.split("\n")
-    i = len(s_array) - 1
-    req_no_of_hash = 2
-    while i > 0:
-        if s_array[i].find("#") != -1:
-            req_no_of_hash = s_array[i].count('#') + 1
-            break
-        i = i - 1
-    no_hash = 0
-    hash_string = ''
-    while no_hash < req_no_of_hash:
-        hash_string = hash_string + '#'
-        no_hash = no_hash + 1
-    return hash_string
-
-def cleanup_data(s):
-    s = remove_unwanted_char(s)
-    s = s.replace('<details>', '')
-    s = s.replace('</details>', '')
-    s = s.replace('</b></summary>', '')
-    # hash_string = get_needed_hash(s[0:s.find('<summary><b>')])
-    hash_string = ''
-    s = s.replace('<summary><b>', hash_string)
-    return s
-
-def read_docs() -> []:
-    g = Github(os.getenv('GITTOKEN'))
-    repo = g.get_repo('abhisom2912/nft-drop-starter-project')
-    title_stack=[]
-    contents = repo.get_contents("")
-    while contents:
-        try:
-            file_content = contents.pop(0)
-        except Exception:
-            pass
-        if file_content.type == "dir":
-            contents.extend(repo.get_contents(file_content.path))
-        else:
-            if file_content.path.find('Dfyn V2') == -1:
-                continue
-            if file_content.name.endswith('md') or file_content.name.endswith('mdx'):
-                file_contents = repo.get_contents(file_content.path)
-                sample = file_contents.decoded_content.decode()
-                add_data_array(file_content.path, sample, title_stack)
-    return title_stack
-
 def create_data_for_docs(title_stack) -> []:
     heads = {}
     max_level = 0
@@ -155,21 +52,12 @@ def create_data_for_docs(title_stack) -> []:
     s2 = '</Section>'
 
     for level, header, content, dir in title_stack:
-        dir_elements = []
         final_header = header
-        dir_elements_temp = dir.split('/')
-        for dir in dir_elements_temp:
-            dir_split = dir.rsplit(" ", 1)[0]
-            try:
-                extension = '.' + dir.rsplit(" ", 1)[1].split('.')[1]
-            except IndexError:
-                extension = ''
-            final_dir = dir_split + extension
-            dir_elements.append(final_dir)
+        dir_elements = dir.split('/')
         element_len = 1
         dir_header = ''
         sub = 1
-        title = 'Dfyn V2' + " - " + dir_elements[0]
+        title = 'Evoverses' + " - " + dir_elements[0]
         if dir_elements[len(dir_elements) - sub].find('README') != -1:
             sub = sub + 1
         while element_len < len(dir_elements) - sub:
@@ -216,18 +104,8 @@ def create_data_for_docs(title_stack) -> []:
                 for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens)]
     return outputs
 
-def final_data_for_openai(outputs):
-    res = []
-    res += outputs
-    df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
-    df = df[df.tokens>40]
-    df = df.drop_duplicates(['title','heading'])
-    df = df.reset_index().drop('index',axis=1) # reset index
-    return df
-
 def add_data_array(file_path, content, title_stack):
     title = pp.AtLineStart(pp.Word("#")) + pp.rest_of_line
-    content = cleanup_data(content)
     title_stack.append([0, 'start_of_file'])
     if content.split('\n')[0] == '---':
         title_stack[-1].append('')
@@ -252,12 +130,48 @@ def add_data_array(file_path, content, title_stack):
     title_stack[-1].append(content[last_end:])
     title_stack[-1].append(file_path)
 
-def add_whitepaper_data(document, title_stack):
-    content = convert_to_md_format(document)
-    add_data_array('Whitepaper', content, title_stack)
+def final_data_for_openai(outputs):
+    res = []
+    res += outputs
+    df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
+    df = df[df.tokens>40]
+    df = df.drop_duplicates(['title','heading'])
+    df = df.reset_index().drop('index',axis=1) # reset index
+    return df
+
+
+def count_tokens(text: str) -> int:
+    """count the number of tokens in a string"""
+    return len(tokenizer.encode(text))
+
+def find_between( s, first, last ):
+    try:
+        start = s.index( first ) + len( first )
+        end = s.rindex( last, start )
+        return s[start:end]
+    except ValueError:
+        return ""
+
+def reduce_long(
+        long_text: str, long_text_tokens: bool = False, max_len: int = 590
+) -> str:
+    """
+    Reduce a long text to a maximum of `max_len` tokens by potentially cutting at a sentence end
+    """
+    if not long_text_tokens:
+        long_text_tokens = count_tokens(long_text)
+    if long_text_tokens > max_len:
+        sentences = sent_tokenize(long_text.replace("\n", " "))
+        ntokens = 0
+        for i, sentence in enumerate(sentences):
+            ntokens += 1 + count_tokens(sentence)
+            if ntokens > max_len:
+                return ". ".join(sentences[:i][:-1]) + "."
+
+    return long_text
 
 def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> List[float]:
-    time.sleep(3)
+    time.sleep(5)
     result = openai.Embedding.create(
         model=model,
         input=text
@@ -341,38 +255,27 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
     return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
 
 def answer_query_with_context(
-		query: str,
-		df: pd.DataFrame,
-		document_embeddings: Dict[Tuple[str, str], np.array],
-		show_prompt: bool = False
+        query: str,
+        df: pd.DataFrame,
+        document_embeddings: Dict[Tuple[str, str], np.array],
+        show_prompt: bool = False
 ) -> str:
     prompt = construct_prompt(
-		query,
-		document_embeddings,
-		df
-	)
+        query,
+        document_embeddings,
+        df
+    )
     if show_prompt:
         print(prompt)
 
     response = openai.Completion.create(
-		prompt=prompt,
-		**COMPLETIONS_API_PARAMS
-	)
+        prompt=prompt,
+        **COMPLETIONS_API_PARAMS
+    )
 
     return response["choices"][0]["text"].strip(" \n")
 
-def initialize():
-    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
-    title_stack = read_docs()
-    if document != '':
-        add_whitepaper_data(document, title_stack)
-    outputs = create_data_for_docs(title_stack)
-    df = final_data_for_openai(outputs)
-    print(df.head)
-    df = df.set_index(["title", "heading"])
-    document_embeddings = compute_doc_embeddings(df)
-    print("{len(df)} rows in the data.")
-    return df, document_embeddings
+
 
 def start_discord_bot(df, document_embeddings):
     intents = discord.Intents.default()
@@ -389,16 +292,28 @@ def start_discord_bot(df, document_embeddings):
         if message.author == client.user:
             return
 
-        if message.content.lower().find('@1064872402003169312'.lower()) != -1:
+        if message.content.lower().find('@1072338244085227623'.lower()) != -1:
             answer = answer_query_with_context(message.content, df, document_embeddings)
             await message.channel.send(answer)
 
     client.run(os.getenv('DISCORD_TOKEN'))
 
-
 def main():
-    df, document_embeddings  = initialize()
+    title_stack = []
+
+    openai.api_key = os.getenv('OPENAI_API_KEY')
+    content = get_gitbook_data_in_md_format('https://docs.evoverses.com', '')
+    print('Gitbook data in md format fetched')
+    add_data_array('Whitepaper', content, title_stack)
+    outputs = create_data_for_docs(title_stack)
+    print('Outputs created for gitbook data')
+    df = final_data_for_openai(outputs)
+    print(df.head)
+    df = df.set_index(["title", "heading"])
+    document_embeddings = compute_doc_embeddings(df)
+    print('Embeddings created, starting bot now...')
     start_discord_bot(df, document_embeddings)
+
 
 if __name__ == '__main__':
     main()

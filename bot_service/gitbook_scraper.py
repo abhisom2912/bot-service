@@ -1,5 +1,5 @@
 import requests
-from bs4 import BeautifulSoup, SoupStrainer
+from bs4 import BeautifulSoup
 import re
 import httplib2
 
@@ -96,6 +96,7 @@ def get_gitbook_data_in_md_format(base_url, first_url):
 
 def main():
     output_string = get_gitbook_data_in_md_format(BASE_URL, FIRST_PAGE_URL)
+    print(output_string)
 
 if __name__ == '__main__':
     main()

@@ -17,6 +17,7 @@ import requests
 import json
 import multiprocessing
 import ssl
+import gspread
 from itertools import islice
 
 try:
@@ -49,6 +50,8 @@ separator_len = len(encoding.encode(SEPARATOR))
 
 bot_id = "1"
 bot_description = "Router protocol relayer info"
+SHEET_ID = '1ve2d13qfafxTm-Gz6Hl1535Xag-ZWbHUU9-FhFe3GKw'
+SHEET_NAME = 'Data Upload'
 
 
 COMPLETIONS_API_PARAMS = {
@@ -577,6 +580,30 @@ def update_in_db(outputs, embeddings, _id):
     response = requests.put(config['BASE_API_URL'] + "document/" + _id, json=data_to_update)
     return response
 
+def add_data_from_sheet(bot_id, sheet_id, sheet_name):
+    # TODO - Fix the below line
+    gc = gspread.service_account('/Users/abhisheksomani/Downloads/credentials.json')
+    spreadsheet = gc.open_by_key(sheet_id)
+    worksheet = spreadsheet.worksheet(sheet_name)
+    rows = worksheet.get_all_records()
+    df = pd.DataFrame(rows)
+    data_dict = {}
+    upload_df = pd.DataFrame()
+    for index, data in df.iterrows():
+        if data['Uploaded'] == 'No' or data['Uploaded'] == '':
+            # Upload to df and embeddings
+            add_data(bot_id, data['Title'], data['Heading'], data['Content'])
+
+            # Recreate the df to upload back to the gsheet
+            data_dict['Title'] = data['Title']
+            data_dict['Heading'] = data['Heading']
+            data_dict['Content'] = data['Content']
+            data_dict['Uploaded'] = 'Yes'
+            print(data_dict)
+            data_df = pd.DataFrame([data_dict])
+            upload_df = pd.concat([upload_df, data_df])
+
+
 def main():
     # outputs, df, document_embeddings = initialize()
     # response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
@@ -587,7 +614,8 @@ def main():
     # response_after_adding_data = add_data(bot_id, "Router Protocol", "FAQs", "What is Voyager? Voyager is a cross-chain swapping engine that allows for cross-chain asset transfers as well as cross-chain sequencing of asset transfers and arbitrary instruction transfers. What is Router Chain? The Router chain is a layer 1 blockchain that leverages tendermint’s Byzantine Fault Tolerant (BFT) consensus engine. As a Proof of Stake (PoS) blockchain, the Router chain is primarily run by a network of validators with economic incentives to act honestly. The Router chain is built using the Cosmos SDK and encapsulates all the features of Cosmos, including fast block times, robust security mechanisms, and, most importantly, CosmWasm - a security-first smart contract platform. What is CrossTalk? Router's CrossTalk library is an extensible cross-chain framework that enables seamless state transitions across multiple chains. In simple terms, this library leverages Router's infrastructure to allow contracts on one chain to pass instructions to contracts deployed on some other chain without the need for deploying any contracts on the Router chain. The library is structured in a way that it can be integrated seamlessly into your development environment to allow for cross-chain message passing without disturbing other parts of your product. When to use CrossTalk? CrossTalk is best suited for cross-chain dApps that do not require custom bridging logic or any data aggregation layer in the middle - developers can simply plug into this framework and transform their existing single-chain or multi-chain dApps into cross-chain dApps. What is ROUTE Token? Router Protocol's native cryptographically-secured digital token ROUTE is a transferable representation of a functional asset that will be used as the gas and governance token in the Router ecosystem. What is the Utility of ROUTE token? It will initially be used as gas currency on Router chain, paying transaction costs for using CrossTalk library, as well as for governance decisions and validator incentives.")
     
     # response_after_adding_data = add_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "For cross-chain instruction transfers that do not require any logic in the middle or do not need any accounting layer, Router's CrossTalk framework is the best option. It is an easy-to-implement cross-chain smart contract library that does not require you to deploy any new contract - only a few lines of code need to be included, and your single-chain contract will become a cross-chain contract. CrossTalk's ability to transfer multiple contract-level instructions in a single cross-chain call makes it a very powerful tool.")
-    response_after_updating_data = update_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "CrossTalk is a cross-chain messaging framework on Router Protocol.")
+    # response_after_updating_data = update_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "CrossTalk is a cross-chain messaging framework on Router Protocol.")
+    response_after_adding_data = add_data_from_sheet(bot_id, SHEET_ID, SHEET_NAME)
     outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
     df_from_database = final_data_for_openai(outputs_from_database)
     p = DiscordBot(df_from_database, document_embeddings_from_database)

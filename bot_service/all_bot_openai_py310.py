@@ -582,10 +582,11 @@ def update_in_db(outputs, embeddings, _id):
 
 def add_data_from_sheet(bot_id, sheet_id, sheet_name):
     # TODO - Fix the below line
-    gc = gspread.service_account('/Users/abhisheksomani/Downloads/credentials.json')
+    gc = gspread.service_account('./credentials.json')
     spreadsheet = gc.open_by_key(sheet_id)
     worksheet = spreadsheet.worksheet(sheet_name)
     rows = worksheet.get_all_records()
+    print(rows)
     df = pd.DataFrame(rows)
     data_dict = {}
     upload_df = pd.DataFrame()

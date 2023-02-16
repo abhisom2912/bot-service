@@ -1,3 +1,4 @@
 .idea/
 /bot_service/mongo_service/misc
 /bot_service/.env
+credentials.json

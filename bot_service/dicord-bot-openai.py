@@ -16,6 +16,7 @@ from typing import Dict
 from typing import Tuple
 import nltk
 from pdf_parse_seq import *
+from dotenv import dotenv_values
 
 nltk.download('punkt')
 
@@ -362,8 +363,9 @@ def answer_query_with_context(
     return response["choices"][0]["text"].strip(" \n")
 
 def initialize():
-    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
-    title_stack = read_docs()
+    document = '/Users/abhisheksomani/Downloads/Router_Chain_Whitepaper-pages.pdf'
+    # title_stack = read_docs()
+    title_stack = []
     if document != '':
         add_whitepaper_data(document, title_stack)
     outputs = create_data_for_docs(title_stack)
@@ -389,7 +391,7 @@ def start_discord_bot(df, document_embeddings):
         if message.author == client.user:
             return
 
-        if message.content.lower().find('@1064872402003169312'.lower()) != -1:
+        if message.content.lower().find('@1064872402003169312'.lower()) != -1 or message.content.lower().find('@&1064874391084728324'.lower()) != -1:
             answer = answer_query_with_context(message.content, df, document_embeddings)
             await message.channel.send(answer)
 

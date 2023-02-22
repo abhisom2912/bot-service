@@ -7,6 +7,7 @@ from transformers import GPT2TokenizerFast
 
 import numpy as np
 from github import Github
+from dotenv import dotenv_values
 import os
 import pyparsing as pp
 import openai
@@ -17,10 +18,18 @@ from typing import List
 from typing import Dict
 from typing import Tuple
 import nltk
+import gspread
 
 from gitbook_scraper import *
 
 nltk.download('punkt')
+config = dotenv_values(".env")
+
+bot_id = "2"
+bot_description = "Evoverses Bot"
+SHEET_ID = '1ve2d13qfafxTm-Gz6Hl1535Xag-ZWbHUU9-FhFe3GKw'
+SHEET_NAME = 'Data Upload'
+min_token_limit = 10
 
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 COMPLETIONS_MODEL = "text-davinci-003"
@@ -275,7 +284,101 @@ def answer_query_with_context(
 
     return response["choices"][0]["text"].strip(" \n")
 
+def untuplify_dict_keys(mapping):
+    string_keys = {json.dumps(k): v for k, v in mapping.items()}
+    return string_keys
 
+def tuplify_dict_keys(string):
+    mapping = string
+    return {tuple(json.loads(k)): v for k, v in mapping.items()}
+
+def send_question_to_db(bot_id, question, answer):
+    data_to_post = {"bot_id": bot_id, "question": question, "answer": answer}
+    response = requests.post(config['BASE_API_URL'] + "question/", json=data_to_post)
+    return response
+
+def send_to_db(_id, description, outputs, document_embeddings):
+    data_to_post = {"_id": _id, "description": description, "data": outputs, "embeddings": untuplify_dict_keys(document_embeddings)}
+    response = requests.post(config['BASE_API_URL'] + "document/", json=data_to_post)
+    return response
+
+def retrieve_from_db(_id):
+    response = requests.get(config['BASE_API_URL'] + "document/" + _id)
+    json_response = response.json()
+    outputs = json_response['data']
+    document_embeddings = tuplify_dict_keys(json_response['embeddings'])
+    return outputs, document_embeddings
+
+def update_in_db(outputs, embeddings, _id):
+    # update the entry in the database
+    data_to_update = {"data": outputs, "embeddings": untuplify_dict_keys(embeddings)}
+    response = requests.put(config['BASE_API_URL'] + "document/" + _id, json=data_to_update)
+    return response
+
+def add_data_from_sheet(bot_id, sheet_id, sheet_name):
+    # TODO - Fix the below line
+    gc = gspread.service_account('./credentials.json')
+    spreadsheet = gc.open_by_key(sheet_id)
+    worksheet = spreadsheet.worksheet(sheet_name)
+    rows = worksheet.get_all_records()
+    print(rows)
+    df = pd.DataFrame(rows)
+    data_dict = {}
+    upload_df = pd.DataFrame()
+    for index, data in df.iterrows():
+        if data['Uploaded'] == 'No' or data['Uploaded'] == '':
+            # Upload to df and embeddings
+            add_data(bot_id, data['Title'], data['Heading'], data['Content'])
+
+            # Recreate the df to upload back to the gsheet
+            data_dict['Title'] = data['Title']
+            data_dict['Heading'] = data['Heading']
+            data_dict['Content'] = data['Content']
+            data_dict['Uploaded'] = 'Yes'
+            print(data_dict)
+            data_df = pd.DataFrame([data_dict])
+            upload_df = pd.concat([upload_df, data_df])
+
+def add_data(bot_id, title, heading, content):
+    outputs, embeddings = retrieve_from_db(bot_id)
+    # check to ensure that the output does not already include this entry
+    for x in outputs:
+        if(title == x[0] and heading == x[1] and content == x[2]):
+            print("Data already present")
+            return "Data already present"
+    # take title, heading and content and fetch the new outputs
+    new_outputs = calculate_new_output(title, heading, content)
+    new_df = final_data_for_openai(new_outputs)
+    # create an embedding against the newly added data
+    new_document_embeddings = compute_doc_embeddings(new_df)
+    # append the new output to the outputs in the database
+    outputs.extend(new_outputs)
+    # append the new embedding to the embedding in the database
+    embeddings.update(new_document_embeddings)
+    return update_in_db(outputs, embeddings, bot_id)
+
+def calculate_new_output(title, heading, content):
+    nheadings, ncontents, ntitles = [], [], []
+    outputs = []
+    max_len = 1500
+    nheadings.append(heading)
+    ncontents.append(content)
+    ntitles.append(title)
+    ncontent_ntokens = [
+        count_tokens(c)
+        + 3
+        + count_tokens(" ".join(h.split(" ")[1:-1]))
+        - (1 if len(c) == 0 else 0)
+        for h, c in zip(nheadings, ncontents)
+    ]
+
+    for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens):
+        if (t<max_len and t>min_token_limit):
+            outputs += [(title,h,c,t)]
+        elif(t>=max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
+
+    return outputs
 
 def start_discord_bot(df, document_embeddings):
     intents = discord.Intents.default()
@@ -299,8 +402,8 @@ def start_discord_bot(df, document_embeddings):
     client.run(os.getenv('DISCORD_TOKEN'))
 
 def main():
-    title_stack = []
 
+    title_stack = []
     openai.api_key = os.getenv('OPENAI_API_KEY')
     content = get_gitbook_data_in_md_format('https://docs.evoverses.com', '')
     print('Gitbook data in md format fetched')
@@ -311,8 +414,17 @@ def main():
     print(df.head)
     df = df.set_index(["title", "heading"])
     document_embeddings = compute_doc_embeddings(df)
-    print('Embeddings created, starting bot now...')
+    print('Embeddings created, sending data to db...')
+    response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
+
+
+
+    response_after_adding_data = add_data_from_sheet(bot_id, SHEET_ID, SHEET_NAME)
+    outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
+    df_from_database = final_data_for_openai(outputs_from_database)
+
     start_discord_bot(df, document_embeddings)
+
 
 
 if __name__ == '__main__':

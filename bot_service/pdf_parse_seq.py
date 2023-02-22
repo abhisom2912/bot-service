@@ -104,8 +104,8 @@ def headers_para(doc):
                                     # Ends with a digit, as sections always end with a digit
                                     # Style is not same as the paragraph style
                                     if re.match('^[0-9\.]*$', block_string.split(" ")[0]) and block_string[:1].isdigit() \
-                                            and not(block_string.strip().isdigit()) and re.search(r'\d+$', block_string.split(" ")[0])\
-                                            and compare_fonts(para_font_styles, s):
+                                            and not(block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
+                                            # and compare_fonts(para_font_styles, s):
                                         previous_header_num = header.split(" ")[0]
                                         if validate_new_num(block_string.split(" ")[0], previous_header_num):
                                             header = block_string
@@ -120,8 +120,7 @@ def headers_para(doc):
                 # is not empty and is not only special characters
                 if block_string != '' and not re.match(r'^[_\W]+$', block_string):
                     if re.match('^[0-9\.]*$', block_string.split(" ")[0]) and block_string[:1].isdigit() \
-                            and not(block_string.strip().isdigit()) and re.search(r'\d+$', block_string.split(" ")[0]) \
-                            and compare_fonts(para_font_styles, s):
+                            and not(block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
                         previous_header_num = header.split(" ")[0]
                         if validate_new_num(block_string.split(" ")[0], previous_header_num):
                             header = block_string
@@ -187,7 +186,8 @@ def convert_to_md_format(document):
 
 def main():
     # print(validate_new_num('3','2.1.1')) Dfyn_V2_Whitepaper-pages-4-15 whitepaper-v3.pdf
-    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
+    document = '/Users/abhisheksomani/Downloads/Router_Chain_Whitepaper-pages.pdf'
+    # -pages-7
     print(convert_to_md_format(document))
 
 

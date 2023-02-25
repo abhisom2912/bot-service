@@ -180,7 +180,6 @@ def create_final_output(header_contents):
 
 def convert_to_md_format(document):
     doc = fitz.open(document)
-
     header_contents = headers_para(doc)
     return create_final_output(header_contents)
 

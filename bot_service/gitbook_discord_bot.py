@@ -146,6 +146,7 @@ def final_data_for_openai(outputs):
     df = df[df.tokens>40]
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
+    df = df.set_index(["title", "heading"])
     return df
 
 
@@ -399,23 +400,23 @@ def start_discord_bot(df, document_embeddings):
             answer = answer_query_with_context(message.content, df, document_embeddings)
             await message.channel.send(answer)
 
-    client.run(os.getenv('DISCORD_TOKEN'))
+    client.run(config['DISCORD_TOKEN_EVOVERSE'])
 
 def main():
 
-    title_stack = []
-    openai.api_key = os.getenv('OPENAI_API_KEY')
-    content = get_gitbook_data_in_md_format('https://docs.evoverses.com', '')
-    print('Gitbook data in md format fetched')
-    add_data_array('Whitepaper', content, title_stack)
-    outputs = create_data_for_docs(title_stack)
-    print('Outputs created for gitbook data')
-    df = final_data_for_openai(outputs)
-    print(df.head)
-    df = df.set_index(["title", "heading"])
-    document_embeddings = compute_doc_embeddings(df)
-    print('Embeddings created, sending data to db...')
-    response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
+    # title_stack = []
+    openai.api_key = config['OPENAI_API_KEY']
+    # content = get_gitbook_data_in_md_format('https://docs.evoverses.com', '')
+    # print('Gitbook data in md format fetched')
+    # add_data_array('Whitepaper', content, title_stack)
+    # outputs = create_data_for_docs(title_stack)
+    # print('Outputs created for gitbook data')
+    # df = final_data_for_openai(outputs)
+    # print(df.head)
+    # df = df.set_index(["title", "heading"])
+    # document_embeddings = compute_doc_embeddings(df)
+    # print('Embeddings created, sending data to db...')
+    # response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
 
 
 
@@ -423,7 +424,7 @@ def main():
     outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
     df_from_database = final_data_for_openai(outputs_from_database)
 
-    start_discord_bot(df, document_embeddings)
+    start_discord_bot(df_from_database, document_embeddings_from_database)
 
 
 

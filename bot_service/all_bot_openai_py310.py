@@ -381,7 +381,7 @@ def initialize():
     print(outputs)
     df = final_data_for_openai(outputs)
     print(df.head)
-    df = df.set_index(["title", "heading"])
+    # df = df.set_index(["title", "heading"])
     document_embeddings = compute_doc_embeddings(df)
     print(len(df), " rows in the data.")
     return outputs, df, document_embeddings

@@ -10,6 +10,7 @@ config = dotenv_values(".env")
 api_key = config['POLYGON_SCAN_API_KEY']
 valid_token_addresses = ['0x0fa8781a83e46826621b3bc094ea2a0212e71b23']
 payment_address = '0xfaec431cb76e10b6c2c275ae4baad2f34ac46322'
+expected_txn_amount = 10
 
 
 class Status(enum.Enum):
@@ -30,10 +31,10 @@ def validate_payment(txn_hash, address):
         if transaction['hash'] == txn_hash:
             txn_hash_found = True
             txn_amount = int(transaction['value']) / math.pow(10, int(transaction['tokenDecimal']))
-            if txn_amount == 10 and transaction['contractAddress'].lower() in valid_token_addresses \
+            if txn_amount == expected_txn_amount and transaction['contractAddress'].lower() in valid_token_addresses \
                     and transaction['from'].lower() == address:
                 return Status.SUCCESS
-            elif txn_amount != 10:
+            elif txn_amount != expected_txn_amount:
                 return Status.AMOUNT_NOT_CORRECT
             elif not transaction['contractAddress'].lower() in valid_token_addresses:
                 return Status.TOKEN_ADDRESS_NOT_VALID

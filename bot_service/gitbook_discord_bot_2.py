@@ -21,6 +21,7 @@ import nltk
 import gspread
 
 from gitbook_scraper import *
+from deepdiff import DeepDiff
 
 nltk.download('punkt')
 config = dotenv_values(".env")
@@ -186,6 +187,7 @@ def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> List[float]:
         model=model,
         input=text
     )
+    print(result["data"][0]["embedding"][0])
     return result["data"][0]["embedding"]
 
 def compute_doc_embeddings(df: pd.DataFrame) -> Dict[Tuple[str, str], List[float]]:
@@ -197,6 +199,32 @@ def compute_doc_embeddings(df: pd.DataFrame) -> Dict[Tuple[str, str], List[float
     return {
         idx: get_embedding(r.content) for idx, r in df.iterrows()
     }
+
+def get_embedding2(text: str, model: str=EMBEDDING_MODEL):
+    time.sleep(7)
+    result = openai.Embedding.create(
+        model=model,
+        input=text
+    )
+    print(result["data"][0]["embedding"][0])
+    return result["data"][0]["embedding"], result["usage"]["total_tokens"]
+
+def compute_doc_embeddings2(df: pd.DataFrame):
+    """
+    Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
+
+    Return a dictionary that maps between each embedding vector and the index of the row that it corresponds to.
+    """
+    print('hello boys')
+    embedding_dict = {}
+    total_tokens_used = 0
+    for idx, r in df.iterrows():
+        embedding, tokens = get_embedding2(r.content)
+        embedding_dict[idx] = embedding
+        total_tokens_used = total_tokens_used + tokens
+    cost_incurred = total_tokens_used * 0.0004 / 1000
+    print(cost_incurred)
+    return embedding_dict, cost_incurred
 
 def load_embeddings(fname: str) -> Dict[Tuple[str, str], List[float]]:
     """
@@ -234,6 +262,71 @@ def order_document_sections_by_query_similarity(query: str, contexts: Dict[Tuple
     ], reverse=True)
 
     return document_similarities
+
+def order_document_sections_by_query_similarity2(query: str, contexts: Dict[Tuple[str, str], np.array]):
+    """
+    Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
+    to find the most relevant sections.
+
+    Return the list of document sections, sorted by relevance in descending order.
+    """
+    query_embedding, tokens = get_embedding2(query)
+
+    document_similarities = sorted([
+        (vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
+    ], reverse=True)
+
+    return document_similarities, tokens
+
+def construct_prompt2(question: str, context_embeddings: dict, df: pd.DataFrame):
+    """
+    Fetch relevant
+    """
+    most_relevant_document_sections, tokens = order_document_sections_by_query_similarity2(question, context_embeddings)
+
+    chosen_sections = []
+    chosen_sections_len = 0
+    chosen_sections_indexes = []
+
+    for _, section_index in most_relevant_document_sections:
+        # Add contexts until we run out of space.
+        document_section = df.loc[section_index]
+
+        chosen_sections_len += document_section.tokens + separator_len
+        if chosen_sections_len > MAX_SECTION_LEN:
+            break
+
+        chosen_sections.append(SEPARATOR + document_section.content.replace("\n", " "))
+        chosen_sections_indexes.append(str(section_index))
+
+    # Useful diagnostic information
+    print("Selected {len(chosen_sections)} document sections:")
+    print("\n".join(chosen_sections_indexes))
+
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
+
+    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:", tokens
+
+def answer_query_with_context2(
+        query: str,
+        df: pd.DataFrame,
+        document_embeddings: Dict[Tuple[str, str], np.array],
+        show_prompt: bool = False
+):
+    prompt, tokens = construct_prompt2(
+        query,
+        document_embeddings,
+        df
+    )
+    if show_prompt:
+        print(prompt)
+
+    response = openai.Completion.create(
+        prompt=prompt,
+        **COMPLETIONS_API_PARAMS
+    )
+    total_cost = response["usage"]["total_tokens"] * 0.03 / 1000 + tokens * 0.0004 / 1000
+    return response["choices"][0]["text"].strip(" \n"), total_cost
 
 def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
     """
@@ -282,7 +375,7 @@ def answer_query_with_context(
         prompt=prompt,
         **COMPLETIONS_API_PARAMS
     )
-
+    print(response["usage"]["total_tokens"])
     return response["choices"][0]["text"].strip(" \n")
 
 def untuplify_dict_keys(mapping):
@@ -392,6 +485,7 @@ def start_discord_bot(df, document_embeddings):
 
     @client.event
     async def on_message(message):
+        print(message.author)
         print(message.content)
         if message.author == client.user:
             return
@@ -409,8 +503,8 @@ def main():
 
     # title_stack = []
     # openai.api_key = os.getenv('OPENAI_API_KEY')
-    # content = get_gitbook_data_in_md_format('https://docs.klimadao.finance', '')
-    # # content = "# Introducing KlimaDAO\n\n## The Problem\nIn our market economy, the invisible hand works to create prosperity and individual self-interest prevails. The freedom to produce and consume as we see fit generates value for the economy; value that allows the whole of society to prosper.\nWe generally consider that the market itself is rational, and assume that it values things in a perfect way. We ignore the paradoxes in front of us everyday. Water, a necessity for life is essentially free across (much of) the world; diamonds have no real utility for us, yet in the free market they are priced exorbitantly, excluding all but the world’s richest.\nAccording to the market, Amazon is the world’s most valuable company. But the Amazon Rainforest has no\nuntil its vegetation is cleared for farming, and its trees are stripped of their greenery and extracted as logs.\nIn the past, the market price of a good was determined by the socially necessary labour inputs required to create it. In recent times we have moved to a system where subjectivity and speculation are key driving forces behind prices.\nFor many, the ‘marketplace’ is no longer a place where two people physically exchange goods or services. It is where we buy securities, that we will never touch, that we often do not understand, in order to grow personal wealth.\nValue has become totally detached from the ‘market’.\nSo much so, that when a good or service destroys value, sometimes immeasurably, there is no penalty imposed by the market.\nCarbon dioxide is a greenhouse gas that inhibits our planet’s ability to let heat escape when it gets too stuffy down here. Carbon dioxide’s effect on our global climate is already leading to change in our planet’s most vulnerable ecosystems: it is bleaching coral reefs; melting the permafrost beneath arctic tundra; leading to the desertification of the tropics. There’s no punishment by the market for emitting carbon dioxide.\nWhat we truly value, is not being valued by the market.\n\n## The solution\nClimate change\nthe number one issue of our generation.\nCarbon dioxide knows no borders, nor do the impacts of global warming. The only way to tackle global warming is by mobilising action at the global scale. The market is the best solution we have at our disposal to achieve decarbonisation of our existing economic activity, and to retrospectively capture and store the carbon we have already emitted, at the scale required.\nMarkets are dynamic and more than a place of exchange, they are a manifestation of our culture and our time. So through organisation and co-ordination we have the power to modify them to reflect what we need and want. If we want the market price to be a fair price of what we value, then we need to move the goalposts and force it to work to the parameters we define. A\nmarket should price in carbon.\nTo properly value carbon, we need to fully integrate the\nwith\n, and we need to reward participation for those who participate in the carbon market with value or influence, or both.\nWeb3 is the perfect place to integrate these markets, it is a place where there is sufficient liquidity to have impact at scale, where smart contracts can securely and transparently govern transactions, and where contributions can be fairly incentivised.\n\n### KlimaDAO\nIn acknowledgement that the carbon markets are one of the most powerful and immediately available tools available to us to fight climate change at scale, KlimaDAO was designed.\nKlimaDAO gives individuals and organizations the opportunity to participate directly in the carbon market via its infrastructure and the KLIMA token.\nKlimaDAO infrastructure prioritises accessibility and transparency across the value chain of the carbon markets:\nProject developers can access the infrastructure to immediately find counterparties for their carbon credits.\nThose looking to acquire carbon credits can do so efficiently and securely using Web3 tools.\nTo claim the environmental benefit of any carbon credits, KlimaDAO’s retirement infrastructure enables this to happen with no reliance on intermediaries.\nAnyone who holds tokens, can participate directly in the governance of the system.\nThe system is built on a public blockchain and is fully transparent, for the first time creating a level playing field across the market. The permissionless and interoperable nature of public blockchains enables greater innovation and lower transaction costs across the market.\nUltimately, the KlimaDAO protocol aims to reorient the carbon markets to be more equitable, and ensure that they prioritize the climate. To achieve this, an economy is required, an economy built on top of open, transparent and public infrastructure."
+    # # content = get_gitbook_data_in_md_format('https://docs.klimadao.finance', '')
+    # content = "# Introducing KlimaDAO\n\n## The Problem\nIn our market economy, the invisible hand works to create prosperity and individual self-interest prevails. The freedom to produce and consume as we see fit generates value for the economy; value that allows the whole of society to prosper.\nWe generally consider that the market itself is rational, and assume that it values things in a perfect way. We ignore the paradoxes in front of us everyday. Water, a necessity for life is essentially free across (much of) the world; diamonds have no real utility for us, yet in the free market they are priced exorbitantly, excluding all but the world’s richest.\nAccording to the market, Amazon is the world’s most valuable company. But the Amazon Rainforest has no\nuntil its vegetation is cleared for farming, and its trees are stripped of their greenery and extracted as logs.\nIn the past, the market price of a good was determined by the socially necessary labour inputs required to create it. In recent times we have moved to a system where subjectivity and speculation are key driving forces behind prices.\nFor many, the ‘marketplace’ is no longer a place where two people physically exchange goods or services. It is where we buy securities, that we will never touch, that we often do not understand, in order to grow personal wealth.\nValue has become totally detached from the ‘market’.\nSo much so, that when a good or service destroys value, sometimes immeasurably, there is no penalty imposed by the market.\nCarbon dioxide is a greenhouse gas that inhibits our planet’s ability to let heat escape when it gets too stuffy down here. Carbon dioxide’s effect on our global climate is already leading to change in our planet’s most vulnerable ecosystems: it is bleaching coral reefs; melting the permafrost beneath arctic tundra; leading to the desertification of the tropics. There’s no punishment by the market for emitting carbon dioxide.\nWhat we truly value, is not being valued by the market.\n\n## The solution\nClimate change\nthe number one issue of our generation.\nCarbon dioxide knows no borders, nor do the impacts of global warming. The only way to tackle global warming is by mobilising action at the global scale. The market is the best solution we have at our disposal to achieve decarbonisation of our existing economic activity, and to retrospectively capture and store the carbon we have already emitted, at the scale required.\nMarkets are dynamic and more than a place of exchange, they are a manifestation of our culture and our time. So through organisation and co-ordination we have the power to modify them to reflect what we need and want. If we want the market price to be a fair price of what we value, then we need to move the goalposts and force it to work to the parameters we define. A\nmarket should price in carbon.\nTo properly value carbon, we need to fully integrate the\nwith\n, and we need to reward participation for those who participate in the carbon market with value or influence, or both.\nWeb3 is the perfect place to integrate these markets, it is a place where there is sufficient liquidity to have impact at scale, where smart contracts can securely and transparently govern transactions, and where contributions can be fairly incentivised.\n\n### KlimaDAO\nIn acknowledgement that the carbon markets are one of the most powerful and immediately available tools available to us to fight climate change at scale, KlimaDAO was designed.\nKlimaDAO gives individuals and organizations the opportunity to participate directly in the carbon market via its infrastructure and the KLIMA token.\nKlimaDAO infrastructure prioritises accessibility and transparency across the value chain of the carbon markets:\nProject developers can access the infrastructure to immediately find counterparties for their carbon credits.\nThose looking to acquire carbon credits can do so efficiently and securely using Web3 tools.\nTo claim the environmental benefit of any carbon credits, KlimaDAO’s retirement infrastructure enables this to happen with no reliance on intermediaries.\nAnyone who holds tokens, can participate directly in the governance of the system.\nThe system is built on a public blockchain and is fully transparent, for the first time creating a level playing field across the market. The permissionless and interoperable nature of public blockchains enables greater innovation and lower transaction costs across the market.\nUltimately, the KlimaDAO protocol aims to reorient the carbon markets to be more equitable, and ensure that they prioritize the climate. To achieve this, an economy is required, an economy built on top of open, transparent and public infrastructure."
     # print('Gitbook data in md format fetched')
     # add_data_array('Whitepaper', content, title_stack)
     # outputs = create_data_for_docs(title_stack)
@@ -418,6 +512,8 @@ def main():
     # df = final_data_for_openai(outputs)
     # print(df.head)
     # document_embeddings = compute_doc_embeddings(df)
+    # document_embeddings1, cost_incurred = compute_doc_embeddings2(df)
+    # print(document_embeddings == document_embeddings1)
 
     # print('Embeddings created, sending data to db...')
     # response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
@@ -434,3 +530,10 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# '
+# In our market economy, the invisible hand works to create prosperity and individual self-interest prevails. The freedom to produce and consume as we see fit generates value for the economy; value that allows the whole of society to prosper.'
+
+# '
+# In our market economy, the invisible hand works to create prosperity and individual self-interest prevails. The freedom to produce and consume as we see fit generates value for the economy; value that allows the whole of society to prosper.'

@@ -38,6 +38,8 @@ EMBEDDING_MODEL = "text-embedding-ada-002"
 MAX_SECTION_LEN = 500
 SEPARATOR = "\n* "
 ENCODING = "cl100k_base"
+EMBEDDING_COST = 0.0004
+COMPLETIONS_COST = 0.03
 
 encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
@@ -51,6 +53,7 @@ COMPLETIONS_API_PARAMS = {
     "max_tokens": 300,
     "model": COMPLETIONS_MODEL,
 }
+
 
 def create_data_for_docs(title_stack) -> []:
     heads = {}
@@ -91,11 +94,11 @@ def create_data_for_docs(title_stack) -> []:
                 final_header = heads[i] + ': ' + final_header
             except Exception:
                 pass
-            i=i-1
+            i = i - 1
         final_header = dir_header + final_header
         if final_header.find('start_of_file') == -1:
             remove_content = find_between(content, s1, s2)
-            content = content.replace(remove_content,'').replace(s1, '').replace(s2, '')
+            content = content.replace(remove_content, '').replace(s1, '').replace(s2, '')
             if content.strip() == '':
                 continue
             nheadings.append(final_header.strip())
@@ -109,10 +112,11 @@ def create_data_for_docs(title_stack) -> []:
         - (1 if len(c) == 0 else 0)
         for h, c in zip(nheadings, ncontents)
     ]
-    outputs += [(title, h, c, t) if t<max_len
-                else (title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))
+    outputs += [(title, h, c, t) if t < max_len
+                else (title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)))
                 for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens)]
     return outputs
+
 
 def add_data_array(file_path, content, title_stack):
     title = pp.AtLineStart(pp.Word("#")) + pp.rest_of_line
@@ -140,13 +144,14 @@ def add_data_array(file_path, content, title_stack):
     title_stack[-1].append(content[last_end:])
     title_stack[-1].append(file_path)
 
+
 def final_data_for_openai(outputs):
     res = []
     res += outputs
     df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
-    df = df[df.tokens>40]
-    df = df.drop_duplicates(['title','heading'])
-    df = df.reset_index().drop('index',axis=1) # reset index
+    df = df[df.tokens > 40]
+    df = df.drop_duplicates(['title', 'heading'])
+    df = df.reset_index().drop('index', axis=1)  # reset index
     df = df.set_index(["title", "heading"])
     return df
 
@@ -155,13 +160,15 @@ def count_tokens(text: str) -> int:
     """count the number of tokens in a string"""
     return len(tokenizer.encode(text))
 
-def find_between( s, first, last ):
+
+def find_between(s, first, last):
     try:
-        start = s.index( first ) + len( first )
-        end = s.rindex( last, start )
+        start = s.index(first) + len(first)
+        end = s.rindex(last, start)
         return s[start:end]
     except ValueError:
         return ""
+
 
 def reduce_long(
         long_text: str, long_text_tokens: bool = False, max_len: int = 590
@@ -181,7 +188,8 @@ def reduce_long(
 
     return long_text
 
-def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> List[float]:
+
+def get_embedding(text: str, model: str = EMBEDDING_MODEL) -> list[float]:
     time.sleep(7)
     result = openai.Embedding.create(
         model=model,
@@ -190,7 +198,8 @@ def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> List[float]:
     print(result["data"][0]["embedding"][0])
     return result["data"][0]["embedding"]
 
-def compute_doc_embeddings(df: pd.DataFrame) -> Dict[Tuple[str, str], List[float]]:
+
+def compute_doc_embeddings(df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
     """
     Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
 
@@ -200,14 +209,15 @@ def compute_doc_embeddings(df: pd.DataFrame) -> Dict[Tuple[str, str], List[float
         idx: get_embedding(r.content) for idx, r in df.iterrows()
     }
 
-def get_embedding2(text: str, model: str=EMBEDDING_MODEL):
+
+def get_embedding2(text: str, model: str = EMBEDDING_MODEL):
     time.sleep(7)
     result = openai.Embedding.create(
         model=model,
         input=text
     )
-    print(result["data"][0]["embedding"][0])
     return result["data"][0]["embedding"], result["usage"]["total_tokens"]
+
 
 def compute_doc_embeddings2(df: pd.DataFrame):
     """
@@ -222,11 +232,12 @@ def compute_doc_embeddings2(df: pd.DataFrame):
         embedding, tokens = get_embedding2(r.content)
         embedding_dict[idx] = embedding
         total_tokens_used = total_tokens_used + tokens
-    cost_incurred = total_tokens_used * 0.0004 / 1000
+    cost_incurred = total_tokens_used * EMBEDDING_COST / 1000
     print(cost_incurred)
     return embedding_dict, cost_incurred
 
-def load_embeddings(fname: str) -> Dict[Tuple[str, str], List[float]]:
+
+def load_embeddings(fname: str) -> dict[tuple[str, str], list[float]]:
     """
     Read the document embeddings and their keys from a CSV.
 
@@ -240,7 +251,8 @@ def load_embeddings(fname: str) -> Dict[Tuple[str, str], List[float]]:
         (r.title, r.heading): [r[str(i)] for i in range(max_dim + 1)] for _, r in df.iterrows()
     }
 
-def vector_similarity(x: List[float], y: List[float]) -> float:
+
+def vector_similarity(x: list[float], y: list[float]) -> float:
     """
     Returns the similarity between two vectors.
 
@@ -248,7 +260,9 @@ def vector_similarity(x: List[float], y: List[float]) -> float:
     """
     return np.dot(np.array(x), np.array(y))
 
-def order_document_sections_by_query_similarity(query: str, contexts: Dict[Tuple[str, str], np.array]) -> List[Tuple[float, Tuple[str, str]]]:
+
+def order_document_sections_by_query_similarity(query: str, contexts: dict[tuple[str, str], np.array]) -> list[
+    tuple[float, tuple[str, str]]]:
     """
     Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
     to find the most relevant sections.
@@ -263,26 +277,28 @@ def order_document_sections_by_query_similarity(query: str, contexts: Dict[Tuple
 
     return document_similarities
 
-def order_document_sections_by_query_similarity2(query: str, contexts: Dict[Tuple[str, str], np.array]):
+
+def order_document_sections_by_query_similarity2(query_embedding: list[float],
+                                                 contexts: dict[tuple[str, str], np.array]):
     """
     Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
     to find the most relevant sections.
 
     Return the list of document sections, sorted by relevance in descending order.
     """
-    query_embedding, tokens = get_embedding2(query)
-
     document_similarities = sorted([
         (vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
     ], reverse=True)
 
-    return document_similarities, tokens
+    return document_similarities
 
-def construct_prompt2(question: str, context_embeddings: dict, df: pd.DataFrame):
+
+def construct_prompt2(question: str, question_embedding: list[float], context_embeddings: dict, df: pd.DataFrame):
     """
     Fetch relevant
     """
-    most_relevant_document_sections, tokens = order_document_sections_by_query_similarity2(question, context_embeddings)
+    most_relevant_document_sections = order_document_sections_by_query_similarity2(question_embedding,
+                                                                                   context_embeddings)
 
     chosen_sections = []
     chosen_sections_len = 0
@@ -305,16 +321,19 @@ def construct_prompt2(question: str, context_embeddings: dict, df: pd.DataFrame)
 
     header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
 
-    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:", tokens
+    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+
 
 def answer_query_with_context2(
         query: str,
+        question_embedding: list,
         df: pd.DataFrame,
-        document_embeddings: Dict[Tuple[str, str], np.array],
+        document_embeddings: dict[tuple[str, str], np.array],
         show_prompt: bool = False
 ):
-    prompt, tokens = construct_prompt2(
+    prompt = construct_prompt2(
         query,
+        question_embedding,
         document_embeddings,
         df
     )
@@ -325,8 +344,9 @@ def answer_query_with_context2(
         prompt=prompt,
         **COMPLETIONS_API_PARAMS
     )
-    total_cost = response["usage"]["total_tokens"] * 0.03 / 1000 + tokens * 0.0004 / 1000
-    return response["choices"][0]["text"].strip(" \n"), total_cost
+    answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
+    return response["choices"][0]["text"].strip(" \n"), answer_cost
+
 
 def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
     """
@@ -357,6 +377,7 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
 
     return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
 
+
 def answer_query_with_context(
         query: str,
         df: pd.DataFrame,
@@ -378,23 +399,29 @@ def answer_query_with_context(
     print(response["usage"]["total_tokens"])
     return response["choices"][0]["text"].strip(" \n")
 
+
 def untuplify_dict_keys(mapping):
     string_keys = {json.dumps(k): v for k, v in mapping.items()}
     return string_keys
 
+
 def tuplify_dict_keys(string):
     mapping = string
     return {tuple(json.loads(k)): v for k, v in mapping.items()}
+
 
 def send_question_to_db(bot_id, question, answer):
     data_to_post = {"bot_id": bot_id, "question": question, "answer": answer}
     response = requests.post(config['BASE_API_URL'] + "question/", json=data_to_post)
     return response
 
+
 def send_to_db(_id, description, outputs, document_embeddings):
-    data_to_post = {"_id": _id, "description": description, "data": outputs, "embeddings": untuplify_dict_keys(document_embeddings)}
+    data_to_post = {"_id": _id, "description": description, "data": outputs,
+                    "embeddings": untuplify_dict_keys(document_embeddings)}
     response = requests.post(config['BASE_API_URL'] + "document/", json=data_to_post)
     return response
+
 
 def retrieve_from_db(_id):
     response = requests.get(config['BASE_API_URL'] + "document/" + _id)
@@ -403,11 +430,13 @@ def retrieve_from_db(_id):
     document_embeddings = tuplify_dict_keys(json_response['embeddings'])
     return outputs, document_embeddings
 
+
 def update_in_db(outputs, embeddings, _id):
     # update the entry in the database
     data_to_update = {"data": outputs, "embeddings": untuplify_dict_keys(embeddings)}
     response = requests.put(config['BASE_API_URL'] + "document/" + _id, json=data_to_update)
     return response
+
 
 def add_data_from_sheet(bot_id, sheet_id, sheet_name):
     # TODO - Fix the below line
@@ -433,11 +462,12 @@ def add_data_from_sheet(bot_id, sheet_id, sheet_name):
             data_df = pd.DataFrame([data_dict])
             upload_df = pd.concat([upload_df, data_df])
 
+
 def add_data(bot_id, title, heading, content):
     outputs, embeddings = retrieve_from_db(bot_id)
     # check to ensure that the output does not already include this entry
     for x in outputs:
-        if(title == x[0] and heading == x[1] and content == x[2]):
+        if (title == x[0] and heading == x[1] and content == x[2]):
             print("Data already present")
             return "Data already present"
     # take title, heading and content and fetch the new outputs
@@ -450,6 +480,7 @@ def add_data(bot_id, title, heading, content):
     # append the new embedding to the embedding in the database
     embeddings.update(new_document_embeddings)
     return update_in_db(outputs, embeddings, bot_id)
+
 
 def calculate_new_output(title, heading, content):
     nheadings, ncontents, ntitles = [], [], []
@@ -467,12 +498,13 @@ def calculate_new_output(title, heading, content):
     ]
 
     for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens):
-        if (t<max_len and t>min_token_limit):
-            outputs += [(title,h,c,t)]
-        elif(t>=max_len):
-            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
+        if (t < max_len and t > min_token_limit):
+            outputs += [(title, h, c, t)]
+        elif (t >= max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)))]
 
     return outputs
+
 
 def start_discord_bot(df, document_embeddings):
     intents = discord.Intents.default()
@@ -485,22 +517,27 @@ def start_discord_bot(df, document_embeddings):
 
     @client.event
     async def on_message(message):
-        print(message.author)
-        print(message.content)
         if message.author == client.user:
             return
 
         if message.content.lower().find('@1072338244085227623'.lower()) != -1:
-            title = "Q: " + message.content.replace('<@1072338244085227623>', '')
-            answer = answer_query_with_context(message.content, df, document_embeddings)
+            question = message.content.replace('<@1072338244085227623>', '')
+            title = "Q: " + question.strip()
+            question_embedding, tokens = get_embedding2(question)
+            question_cost = tokens * EMBEDDING_COST / 1000
+
+            answer, answer_cost = answer_query_with_context2(question, question_embedding, df, document_embeddings)
             embedVar = discord.Embed(title=title, description="A: " + answer, color=0x4bd4d6)
-            embedVar.set_author(name=message.author.display_name + " asked:", url="", icon_url=message.author.display_avatar)
+            embedVar.set_author(name=message.author.display_name + " asked:", url="",
+                                icon_url=message.author.display_avatar)
+            total_cost_for_answer = question_cost + answer_cost
+            print(total_cost_for_answer)
             await message.channel.send(embed=embedVar)
 
     client.run(os.getenv('DISCORD_TOKEN'))
 
-def main():
 
+def main():
     # title_stack = []
     # openai.api_key = os.getenv('OPENAI_API_KEY')
     # # content = get_gitbook_data_in_md_format('https://docs.klimadao.finance', '')
@@ -527,10 +564,8 @@ def main():
     start_discord_bot(df_from_database, document_embeddings_from_database)
 
 
-
 if __name__ == '__main__':
     main()
-
 
 # '
 # In our market economy, the invisible hand works to create prosperity and individual self-interest prevails. The freedom to produce and consume as we see fit generates value for the economy; value that allows the whole of society to prosper.'

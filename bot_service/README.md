@@ -2,6 +2,7 @@
 1) Install the prerequisites:
 - fastapi
 - pymongo
+- uvicorn
 - pydantic
 - uuid
 2) Inside the mongo_service directory, run the following command:

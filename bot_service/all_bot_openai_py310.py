@@ -277,6 +277,7 @@ def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> list[float]:
         model=model,
         input=text
     )
+    print(result["usage"]["total_tokens"])
     return result["data"][0]["embedding"]
 
 def compute_doc_embeddings(df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
@@ -373,7 +374,7 @@ def answer_query_with_context(
 		prompt=prompt,
 		**COMPLETIONS_API_PARAMS
 	)
-
+    print(response["usage"]["total_tokens"])
     return response["choices"][0]["text"].strip(" \n")
 
 def initialize():
@@ -381,7 +382,7 @@ def initialize():
     print(outputs)
     df = final_data_for_openai(outputs)
     print(df.head)
-    df = df.set_index(["title", "heading"])
+    # df = df.set_index(["title", "heading"])
     document_embeddings = compute_doc_embeddings(df)
     print(len(df), " rows in the data.")
     return outputs, df, document_embeddings

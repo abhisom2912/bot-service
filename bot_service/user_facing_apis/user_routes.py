@@ -8,7 +8,6 @@ user_router = APIRouter()
 @user_router.post("/", response_description="Create a new user", status_code=status.HTTP_201_CREATED, response_model=User)
 def create_user(request: Request, user: User = Body(...)):
     user = jsonable_encoder(user)
-    print(user)
     if request.app.database["users"].find_one( {"mail": user['mail']} ):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"This email already exists")
     new_user = request.app.database["users"].insert_one(user)

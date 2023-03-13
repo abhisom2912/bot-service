@@ -40,6 +40,8 @@ MAX_SECTION_LEN = 500
 SEPARATOR = "\n* "
 ENCODING = "cl100k_base"
 min_token_limit = 10
+EMBEDDING_COST = 0.0004
+COMPLETIONS_COST = 0.03
 
 encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
@@ -53,6 +55,10 @@ COMPLETIONS_API_PARAMS = {
     "max_tokens": 300,
     "model": COMPLETIONS_MODEL,
 }
+
+
+# Functions to fetch data
+
 
 def find_all(s, ch):
     previous_ind = 0
@@ -121,7 +127,7 @@ def read_docs(github_repo):
         if file_content.type == "dir":
             contents.extend(repo.get_contents(file_content.path))
         else:
-            if file_content.path.find('relayer') == -1: ## remove this line later
+            if file_content.path.find('orchestrator') == -1: ## remove this line later
                 continue ## remove this line later
             if file_content.name.endswith('md') or file_content.name.endswith('mdx'):
                 file_contents = repo.get_contents(file_content.path)
@@ -263,23 +269,29 @@ def reduce_long(
 
     return long_text
 
-def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> list[float]:
-    time.sleep(5)
+def get_embedding(text: str, model: str = EMBEDDING_MODEL):
+    time.sleep(7)
     result = openai.Embedding.create(
         model=model,
         input=text
     )
-    return result["data"][0]["embedding"]
+    return result["data"][0]["embedding"], result["usage"]["total_tokens"]
 
-def compute_doc_embeddings(df: pd.DataFrame) -> dict[tuple[str, str], list[float]]:
+def compute_doc_embeddings(df: pd.DataFrame):
     """
     Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
-
     Return a dictionary that maps between each embedding vector and the index of the row that it corresponds to.
     """
-    return {
-        idx: get_embedding(r.content) for idx, r in df.iterrows()
-    }
+    print('hello boys')
+    embedding_dict = {}
+    total_tokens_used = 0
+    for idx, r in df.iterrows():
+        embedding, tokens = get_embedding(r.content)
+        embedding_dict[idx] = embedding
+        total_tokens_used = total_tokens_used + tokens
+    cost_incurred = total_tokens_used * EMBEDDING_COST / 1000
+    print(cost_incurred)
+    return embedding_dict, cost_incurred
 
 def read_from_github(protocol_title, github_link):
     github_repo = github_link.partition("github.com/")[2]
@@ -289,10 +301,9 @@ def read_from_github(protocol_title, github_link):
     print(outputs)
     df = final_data_for_openai(outputs)
     print(df.head)
-    df = df.set_index(["title", "heading"])
-    document_embeddings = compute_doc_embeddings(df)
+    document_embeddings, cost_incurred = compute_doc_embeddings(df)
     print(len(df), " rows in the data.")
-    return outputs, document_embeddings
+    return outputs, document_embeddings, cost_incurred
 
 def get_url(url):
     response = requests.get(url)
@@ -335,10 +346,9 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link):
     print('Outputs created for gitbook data')
     df = final_data_for_openai(outputs)
     print(df.head)
-    df = df.set_index(["title", "heading"])
-    document_embeddings = compute_doc_embeddings(df)
+    document_embeddings, cost_incurred = compute_doc_embeddings(df)
     print('Embeddings created, sending data to db...')
-    return outputs, document_embeddings
+    return outputs, document_embeddings, cost_incurred
 
 def get_whitepaper_data(type, document):
     content = convert_to_md_format(document)
@@ -347,8 +357,88 @@ def get_whitepaper_data(type, document):
     print('Outputs created for whitepaper data')
     df = final_data_for_openai(outputs)
     print(df.head)
-    df = df.set_index(["title", "heading"])
-    document_embeddings = compute_doc_embeddings(df)
+    document_embeddings, cost_incurred = compute_doc_embeddings(df)
     print('Embeddings created, sending data to db...')
-    return outputs, df, document_embeddings
+    return outputs, df, document_embeddings, cost_incurred
 
+
+
+# Functions to help answer queries
+
+
+def vector_similarity(x: list[float], y: list[float]) -> float:
+    """
+    Returns the similarity between two vectors.
+
+    Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
+    """
+    return np.dot(np.array(x), np.array(y))
+
+
+def order_document_sections_by_query_similarity(query_embedding: list[float],
+                                                 contexts: dict[tuple[str, str], np.array]):
+    """
+    Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
+    to find the most relevant sections.
+    Return the list of document sections, sorted by relevance in descending order.
+    """
+    document_similarities = sorted([
+        (vector_similarity(query_embedding, doc_embedding), doc_index) for doc_index, doc_embedding in contexts.items()
+    ], reverse=True)
+
+    return document_similarities
+
+
+def construct_prompt(question: str, question_embedding: list[float], context_embeddings: dict, df: pd.DataFrame):
+    """
+    Fetch relevant
+    """
+    most_relevant_document_sections = order_document_sections_by_query_similarity(question_embedding,
+                                                                                   context_embeddings)
+
+    chosen_sections = []
+    chosen_sections_len = 0
+    chosen_sections_indexes = []
+
+    for _, section_index in most_relevant_document_sections:
+        # Add contexts until we run out of space.
+        document_section = df.loc[section_index]
+
+        chosen_sections_len += document_section.tokens + separator_len
+        if chosen_sections_len > MAX_SECTION_LEN:
+            break
+
+        chosen_sections.append(SEPARATOR + document_section.content.replace("\n", " "))
+        chosen_sections_indexes.append(str(section_index))
+
+    # Useful diagnostic information
+    print("Selected {len(chosen_sections)} document sections:")
+    print("\n".join(chosen_sections_indexes))
+
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
+
+    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+
+
+def answer_query_with_context(
+        query: str,
+        question_embedding: list,
+        df: pd.DataFrame,
+        document_embeddings: dict[tuple[str, str], np.array],
+        show_prompt: bool = False
+):
+    prompt = construct_prompt(
+        query,
+        question_embedding,
+        document_embeddings,
+        df
+    )
+    if show_prompt:
+        print(prompt)
+
+    response = openai.Completion.create(
+        prompt=prompt,
+        **COMPLETIONS_API_PARAMS
+    )
+    answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
+    return response["choices"][0]["text"].strip(" \n"), answer_cost

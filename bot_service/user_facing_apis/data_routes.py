@@ -10,6 +10,7 @@ question_router = APIRouter()
 
 EMBEDDING_COST = 0.0004
 COMPLETIONS_COST = 0.03
+THRESHOLD_FOR_FUZZY = 0.93
 
 
 def fetch_outputs_and_embeddings(protocol, data):
@@ -132,29 +133,32 @@ def answer_question(protocol_id: str, question: str, request: Request):
     outputs_from_db = data_from_db['data']
     questions_from_db = data_from_db["questions"]
 
-
-
     document_embeddings_from_db = tuplify_dict_keys(data_from_db['embeddings'])
     df_from_db = final_data_for_openai(outputs_from_db)
     question_embedding, tokens = get_embedding(question)
     question_cost = tokens * EMBEDDING_COST / 1000
-    # question_similarities = sorted([
-    #     (vector_similarity(question_embedding, prev_questions_embeddings[prev_question]), prev_question) for 'question' in questions_from_db.keys()
-    # ], reverse=True)
 
-    answer, answer_cost = answer_query_with_context(question, question_embedding, df_from_db, document_embeddings_from_db)
-    total_cost_for_answer = question_cost + answer_cost
-    protocol['usage'] += total_cost_for_answer
+    question_similarities = sorted([
+        (vector_similarity(question_embedding, prev_question['embedding']), prev_question['answer'], prev_question['question']) for prev_question in questions_from_db
+    ], reverse=True)
 
-    update_result = request.app.database["protocols"].update_one(
-            {"_id": protocol_id}, {"$set": protocol}
+    if question_similarities[0][0] > THRESHOLD_FOR_FUZZY:
+        answer = question_similarities[0][1]
+        total_cost_for_answer = question_cost
+    else:
+        answer, answer_cost = answer_query_with_context(question, question_embedding, df_from_db, document_embeddings_from_db)
+        total_cost_for_answer = question_cost + answer_cost
+        question_to_add = {"question": question, "answer": answer, "embedding": question_embedding, "usage": total_cost_for_answer}
+        questions_from_db.append(question_to_add)
+        data_to_post = {"questions": questions_from_db}
+        update_result = request.app.database["data"].update_one(
+            {"protocol_id": protocol_id}, {"$set": jsonable_encoder(data_to_post)}
         )
 
-    question_to_add = {"question": question, "answer": answer, "embedding": question_embedding, "usage": total_cost_for_answer}
-    questions_from_db.append(question_to_add)
-    data_to_post = {"questions": questions_from_db}
-    update_result = request.app.database["data"].update_one(
-            {"protocol_id": protocol_id}, {"$set": jsonable_encoder(data_to_post)}
+    print(total_cost_for_answer)
+    protocol['usage'] += total_cost_for_answer
+    update_result = request.app.database["protocols"].update_one(
+            {"_id": protocol_id}, {"$set": protocol}
         )
 
     return answer

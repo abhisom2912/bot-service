@@ -270,7 +270,6 @@ def reduce_long(
     return long_text
 
 def get_embedding(text: str, model: str = EMBEDDING_MODEL):
-    time.sleep(7)
     result = openai.Embedding.create(
         model=model,
         input=text
@@ -289,6 +288,7 @@ def compute_doc_embeddings(df: pd.DataFrame):
         embedding, tokens = get_embedding(r.content)
         embedding_dict[idx] = embedding
         total_tokens_used = total_tokens_used + tokens
+        time.sleep(7)
     cost_incurred = total_tokens_used * EMBEDDING_COST / 1000
     print(cost_incurred)
     return embedding_dict, cost_incurred

@@ -4,6 +4,7 @@ import requests
 import time
 import urllib
 from transformers import GPT2TokenizerFast
+from asgiref.sync import sync_to_async
 
 import numpy as np
 from github import Github
@@ -19,6 +20,7 @@ from typing import Dict
 from typing import Tuple
 import nltk
 import gspread
+from datetime import datetime
 
 from gitbook_scraper import *
 
@@ -181,7 +183,7 @@ def reduce_long(
     return long_text
 
 def get_embedding(text: str, model: str=EMBEDDING_MODEL) -> List[float]:
-    time.sleep(7)
+    # time.sleep(7)
     result = openai.Embedding.create(
         model=model,
         input=text
@@ -380,7 +382,6 @@ def calculate_new_output(title, heading, content):
             outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
 
     return outputs
-
 def start_discord_bot(df, document_embeddings):
     intents = discord.Intents.default()
     intents.message_content = True
@@ -392,15 +393,18 @@ def start_discord_bot(df, document_embeddings):
 
     @client.event
     async def on_message(message):
+        print('start ', message.content, ' ', datetime.now())
         print(message.content)
         if message.author == client.user:
             return
 
-        if message.content.lower().find('@1072338244085227623'.lower()) != -1:
-            title = "Q: " + message.content.replace('<@1072338244085227623>', '')
-            answer = answer_query_with_context(message.content, df, document_embeddings)
+        if client.user.mentioned_in(message):
+            question = message.content.replace('<@1072338244085227623>', '')
+            title = "Q: " + question
+            answer = await sync_to_async(answer_query_with_context)(message.content, df, document_embeddings)
             embedVar = discord.Embed(title=title, description="A: " + answer, color=0x4bd4d6)
             embedVar.set_author(name=message.author.display_name + " asked:", url="", icon_url=message.author.display_avatar)
+            print('end ', message.content, ' ', datetime.now())
             await message.channel.send(embed=embedVar)
 
     client.run(os.getenv('DISCORD_TOKEN'))

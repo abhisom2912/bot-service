@@ -48,17 +48,9 @@ def find_last( s, first ):
     except ValueError:
         return ""
 
-def get_needed_hash(req_no_of_hash):
-    no_hash = 0
-    hash_string = ''
-    while no_hash < req_no_of_hash:
-        hash_string = hash_string + '#'
-        no_hash = no_hash + 1
-    return hash_string
-
-def get_gitbook_data_in_md_format(base_url, first_url):
+def get_gitbook_data(base_url, first_url):
+    title_stack = []
     all_page_urls = get_all_page_urls(base_url, first_url)
-    final_output_string = ''
 
     for page_url in all_page_urls:
         page = requests.get(page_url)
@@ -72,31 +64,29 @@ def get_gitbook_data_in_md_format(base_url, first_url):
 
         i = 0
         while i < len(headings) - 1:
-            no_of_header_hash = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
-            final_output_string = final_output_string + get_needed_hash(no_of_header_hash) + ' ' + headings[i].get_text() + '\n'
+            header_level = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
             text_btw = find_between(str(p), str(headings[i]), str(headings[i + 1]))
             soup1 = BeautifulSoup(text_btw, 'html.parser')
             spans = soup1.find_all('span', {"data-key":""})
             content_text = ''
             for span in spans:
                 content_text = content_text + span.get_text() + '\n'
-            final_output_string = final_output_string + content_text + '\n'
+            title_stack.append([header_level, headings[i].get_text(), content_text, 'Whitepaper', page_url])
             i = i + 1
 
-        no_of_header_hash = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
-        final_output_string = final_output_string + get_needed_hash(no_of_header_hash) + ' ' + headings[i].get_text() + '\n'
+        header_level = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
         text_btw = find_last(str(p), str(headings[i]))
         soup1 = BeautifulSoup(text_btw, 'html.parser')
         spans = soup1.find_all('span', {"data-key":""})
         content_text = ''
         for span in spans:
             content_text = content_text + span.get_text() + '\n'
-        final_output_string = final_output_string + content_text + '\n'
-    return final_output_string
+        title_stack.append([header_level, headings[i].get_text(), content_text, 'Whitepaper', page_url])
+    return title_stack
 
 def main():
-    output_string = get_gitbook_data_in_md_format(BASE_URL, FIRST_PAGE_URL)
-    print(output_string)
+    output = get_gitbook_data(BASE_URL, FIRST_PAGE_URL)
+    print(output)
 
 if __name__ == '__main__':
     main()

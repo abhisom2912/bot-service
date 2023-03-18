@@ -48,7 +48,7 @@ def find_last( s, first ):
     except ValueError:
         return ""
 
-def get_gitbook_data(base_url, first_url):
+def get_gitbook_data(base_url, first_url, gitbook_data_type):
     title_stack = []
     all_page_urls = get_all_page_urls(base_url, first_url)
 
@@ -71,7 +71,7 @@ def get_gitbook_data(base_url, first_url):
             content_text = ''
             for span in spans:
                 content_text = content_text + span.get_text() + '\n'
-            title_stack.append([header_level, headings[i].get_text(), content_text, 'Whitepaper', page_url])
+            title_stack.append([header_level, headings[i].get_text(), content_text, gitbook_data_type, page_url])
             i = i + 1
 
         header_level = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])

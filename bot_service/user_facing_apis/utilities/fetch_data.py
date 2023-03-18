@@ -1,8 +1,5 @@
 
-import discord
 from transformers import GPT2TokenizerFast
-import sys
-
 import numpy as np
 from github import Github
 from dotenv import dotenv_values
@@ -13,11 +10,8 @@ import pandas as pd
 import tiktoken
 from nltk.tokenize import sent_tokenize
 import nltk
-import urllib
 import requests
-import json
 import ssl
-from itertools import islice
 
 from utilities.scrapers.gitbook_scraper import *
 from utilities.scrapers.pdf_parse_seq import *
@@ -45,9 +39,6 @@ COMPLETIONS_COST = 0.03
 
 encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
-
-# f"Context separator contains {separator_len} tokens"
-
 
 COMPLETIONS_API_PARAMS = {
     # We use temperature of 0.0 because it gives the most predictable, factual answer.
@@ -121,12 +112,12 @@ def clean_content(content):
     content = content.replace(remove_content,'').replace(s1, '').replace(s2, '')
     return content
 
-
-def read_docs(github_repo):
+def read_docs(github_repo, github_directory):
     g = Github(config['GITHUB_ACCESS_TOKEN'])
     repo = g.get_repo(github_repo)
-    title_stack=[]
+    title_stack = []
     contents = repo.get_contents("")
+    file_content = ''
     while contents:
         try:
             file_content = contents.pop(0)
@@ -135,8 +126,8 @@ def read_docs(github_repo):
         if file_content.type == "dir":
             contents.extend(repo.get_contents(file_content.path))
         else:
-            if file_content.path.find('orchestrator') == -1: ## remove this line later
-                continue ## remove this line later
+            if (github_directory != '' and file_content.path.find(github_directory) == -1) or file_content.path.find('orchestrator') == -1:  ## remove orchestrator line later
+                continue
             if file_content.name.endswith('md') or file_content.name.endswith('mdx'):
                 file_contents = repo.get_contents(file_content.path)
                 title = pp.AtLineStart(pp.Word("#")) + pp.rest_of_line
@@ -146,7 +137,7 @@ def read_docs(github_repo):
                 title_stack.append([0, 'start_of_file']) #level, title, content, path
                 if sample.split('\n')[0] == '---':
                     title_stack[-1].append('')
-                    title_stack[-1].append(file_content.path)
+                    title_stack[-1].append(file_content.path.replace(github_directory, ''))
                     title_stack.append([1, sample.split('\n')[1].split(':')[1].lstrip()])
                     sample = sample.split('---')[2]
 
@@ -154,7 +145,7 @@ def read_docs(github_repo):
                 for t, start, end in title.scan_string(sample):
                     # save content since last title in the last item in title_stack
                     title_stack[-1].append(clean_content(sample[last_end:start].lstrip("\n")))
-                    title_stack[-1].append(file_content.path)
+                    title_stack[-1].append(file_content.path.replace(github_directory, ''))
 
                     # add a new entry to title_stack
                     marker, title_content = t
@@ -166,28 +157,50 @@ def read_docs(github_repo):
 
                 # add trailing text to the final parsed title
                 title_stack[-1].append(clean_content(sample[last_end:]))
-                title_stack[-1].append(file_content.path)
+                title_stack[-1].append(file_content.path.replace(github_directory, ''))
     return title_stack
 
-def create_data_for_docs(protocol_title, title_stack):
+def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
     heads = {}
     max_level = 0
-    nheadings, ncontents, ntitles = [], [], []
+    nheadings, ncontents, ntitles, nlinks = [], [], [], []
     outputs = []
     max_len = 1500
 
     for level, header, content, dir in title_stack:
         final_header = header
-        dir_elements = dir.split('/')
-        element_len = 1
         dir_header = ''
-        sub = 1
-        title = protocol_title + " - " + dir_elements[0]
-        if dir_elements[len(dir_elements) - sub].find('README') != -1:
-            sub = sub + 1
-        while element_len < len(dir_elements) - sub:
-            dir_header = dir_header + dir_elements[element_len] + ': '
-            element_len = element_len + 1
+
+        if doc_type == 'whitepaper':
+            content_link = doc_link
+            title = protocol_title + " - whitepaper"
+        elif doc_type == 'gitbook':
+            content_link =  dir
+            title = protocol_title + " - whitepaper"
+            dir_elements = dir.replace('https://', '').split('/')
+            element_len = 1
+            while element_len < len(dir_elements) - 1:
+                dir_header += dir_elements[element_len].replace('-', ' ') + ': '
+                element_len += 1
+
+        else:
+            element_len = 1
+            dir_elements = dir.split('/')
+            content_link = doc_link + '/' + dir_elements[0]
+            sub = 1
+            title = protocol_title + " - " + dir_elements[0]
+            if dir_elements[len(dir_elements) - sub].find('README') != -1:
+                sub = sub + 1
+            while element_len < len(dir_elements) - sub:
+                dir_header = dir_header + dir_elements[element_len] + ': '
+                element_len = element_len + 1
+
+            element_len = 1
+            while element_len < len(dir_elements) - sub + 1:
+                if dir_elements[element_len].find('.md'):
+                    link = dir_elements[element_len].replace('.mdx', '').replace('.md', '')
+                content_link = content_link + '/' + link
+                element_len = element_len + 1
 
         if level > 0:
             heads[level] = header
@@ -206,7 +219,7 @@ def create_data_for_docs(protocol_title, title_stack):
                 final_header = heads[i] + ': ' + final_header
             except Exception:
                 pass
-            i=i-1
+            i = i - 1
         final_header = dir_header + final_header
         if final_header.find('start_of_file') == -1:
             if content.strip() == '':
@@ -214,6 +227,8 @@ def create_data_for_docs(protocol_title, title_stack):
             nheadings.append(final_header.strip())
             ncontents.append(content)
             ntitles.append(title)
+            nlinks.append(content_link)
+
 
     ncontent_ntokens = [
         count_tokens(c)
@@ -222,18 +237,17 @@ def create_data_for_docs(protocol_title, title_stack):
         - (1 if len(c) == 0 else 0)
         for h, c in zip(nheadings, ncontents)
     ]
-
-    for title, h, c, t in zip(ntitles, nheadings, ncontents, ncontent_ntokens):
-        if (t<max_len and t>min_token_limit):
-            outputs += [(title,h,c,t)]
-        elif(t>=max_len):
-            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c,max_len)))]
+    for title, h, c, t, l in zip(ntitles, nheadings, ncontents, ncontent_ntokens, nlinks):
+        if (t < max_len and t > min_token_limit):
+            outputs += [(title, h, c, t, l)]
+        elif (t >= max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)), l)]
     return outputs
 
 def final_data_for_openai(outputs):
     res = []
     res += outputs
-    df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
+    df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens", "link"])
     # df = df[df.tokens>10] # was initially 40 (need to ask Abhishek why)
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
@@ -245,10 +259,10 @@ def count_tokens(text: str) -> int:
     """count the number of tokens in a string"""
     return len(tokenizer.encode(text))
 
-def find_between( s, first, last ):
+def find_between(s, first, last):
     try:
-        start = s.index( first ) + len( first )
-        end = s.rindex( last, start )
+        start = s.index(first) + len(first)
+        end = s.rindex(last, start)
         return s[start:end]
     except ValueError:
         return ""
@@ -283,7 +297,6 @@ def compute_doc_embeddings(df: pd.DataFrame):
     Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
     Return a dictionary that maps between each embedding vector and the index of the row that it corresponds to.
     """
-    print('hello boys')
     embedding_dict = {}
     total_tokens_used = 0
     for idx, r in df.iterrows():
@@ -295,11 +308,11 @@ def compute_doc_embeddings(df: pd.DataFrame):
     print(cost_incurred)
     return embedding_dict, cost_incurred
 
-def read_from_github(protocol_title, github_link):
+def read_from_github(protocol_title, github_link, github_doc_link, github_directory):
     github_repo = github_link.partition("github.com/")[2]
     print(github_repo)
-    title_stack = read_docs(github_repo)
-    outputs = create_data_for_docs(protocol_title, title_stack)
+    title_stack = read_docs(github_repo, github_directory)
+    outputs = create_data_for_docs(protocol_title, title_stack, github_doc_link, 'github')
     print(outputs)
     df = final_data_for_openai(outputs)
     print(df.head)
@@ -342,7 +355,7 @@ def add_data_array(file_path, content):
 
 def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     title_stack = get_gitbook_data(gitbook_link, '', gitbook_data_type)
-    outputs = create_data_for_docs(protocol_title,title_stack)
+    outputs = create_data_for_docs(protocol_title, title_stack, '', 'gitbook')
     print('Outputs created for gitbook data')
     df = final_data_for_openai(outputs)
     print(df.head)
@@ -350,10 +363,10 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     print('Embeddings created, sending data to db...')
     return outputs, document_embeddings, cost_incurred
 
-def get_whitepaper_data(type, document, protocol_title):
+def get_whitepaper_data(type, document, whitepaper_link, protocol_title):
     content = convert_to_md_format(document)
     title_stack = add_data_array(type, content)
-    outputs = create_data_for_docs(protocol_title, title_stack)
+    outputs = create_data_for_docs(protocol_title, title_stack, whitepaper_link, 'whitepaper')
     print('Outputs created for whitepaper data')
     df = final_data_for_openai(outputs)
     print(df.head)
@@ -398,6 +411,7 @@ def construct_prompt(question: str, question_embedding: list[float], context_emb
 
     chosen_sections = []
     chosen_sections_len = 0
+    chosen_sections_indexes_string = []
     chosen_sections_indexes = []
 
     for _, section_index in most_relevant_document_sections:
@@ -409,15 +423,16 @@ def construct_prompt(question: str, question_embedding: list[float], context_emb
             break
 
         chosen_sections.append(SEPARATOR + document_section.content.replace("\n", " "))
-        chosen_sections_indexes.append(str(section_index))
+        chosen_sections_indexes_string.append(str(section_index))
+        chosen_sections_indexes.append(section_index)
 
     # Useful diagnostic information
-    print("Selected {len(chosen_sections)} document sections:")
-    print("\n".join(chosen_sections_indexes))
+    print("Selected ", len(chosen_sections), " document sections:")
+    print("\n".join(chosen_sections_indexes_string))
 
     header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
 
-    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
+    return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:", chosen_sections_indexes
 
 
 def answer_query_with_context(
@@ -427,7 +442,7 @@ def answer_query_with_context(
         document_embeddings: dict[tuple[str, str], np.array],
         show_prompt: bool = False
 ):
-    prompt = construct_prompt(
+    prompt, chosen_sections_indexes = construct_prompt(
         query,
         question_embedding,
         document_embeddings,
@@ -440,5 +455,15 @@ def answer_query_with_context(
         prompt=prompt,
         **COMPLETIONS_API_PARAMS
     )
+
+    links = []
+    for section_index in chosen_sections_indexes:
+        document_section = df.loc[section_index]
+        link = document_section['link']
+        if link != '' and not (link in links):
+            links.append(link)
+        if len(links) >= 2:
+            break
+
     answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
-    return response["choices"][0]["text"].strip(" \n"), answer_cost
+    return response["choices"][0]["text"].strip(" \n"), answer_cost, links

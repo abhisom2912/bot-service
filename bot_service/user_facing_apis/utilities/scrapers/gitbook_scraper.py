@@ -62,6 +62,9 @@ def get_gitbook_data(base_url, first_url, gitbook_data_type):
 
         headings = p.find_all(re.compile("^h[1-6]$"))
 
+        if len(headings) == 0:
+            continue
+
         i = 0
         while i < len(headings) - 1:
             header_level = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
@@ -71,7 +74,7 @@ def get_gitbook_data(base_url, first_url, gitbook_data_type):
             content_text = ''
             for span in spans:
                 content_text = content_text + span.get_text() + '\n'
-            title_stack.append([header_level, headings[i].get_text(), content_text, gitbook_data_type, page_url])
+            title_stack.append([header_level, headings[i].get_text(), content_text, page_url])
             i = i + 1
 
         header_level = int(re.findall("h[1-6]", str(headings[i]))[0].split('h')[1])
@@ -81,7 +84,8 @@ def get_gitbook_data(base_url, first_url, gitbook_data_type):
         content_text = ''
         for span in spans:
             content_text = content_text + span.get_text() + '\n'
-        title_stack.append([header_level, headings[i].get_text(), content_text, 'Whitepaper', page_url])
+        title_stack.append([header_level, headings[i].get_text(), content_text, page_url])
+    print(title_stack[0])
     return title_stack
 
 def main():

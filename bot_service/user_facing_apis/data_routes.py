@@ -21,7 +21,7 @@ def fetch_outputs_and_embeddings(protocol, data):
         if validators.url(data.data['gitbook']):
             print(data.data['gitbook'])
             gitbook_data_type = "whitepaper"
-            outputs, document_embeddings, cost_incurred = get_data_from_gitbook(gitbook_data_type, data.data['gitbook'])
+            outputs, document_embeddings, cost_incurred = get_data_from_gitbook(gitbook_data_type, data.data['gitbook'], protocol['protocol_name'])
             cost += cost_incurred
         else:
             print("Empty or invalid GitBook link")
@@ -30,10 +30,11 @@ def fetch_outputs_and_embeddings(protocol, data):
             if len(outputs) == 0:
                 print(protocol['protocol_name'])
                 print(data.data['github'])
-                outputs, document_embeddings, cost_incurred = read_from_github(protocol['protocol_name'], data.data['github']) 
+                # github_directory - the specific folder that we need to read within the github repo, if empty then we will read all
+                outputs, document_embeddings, cost_incurred = read_from_github(protocol['protocol_name'], data.data['github'], data.data['github_doc_link'], data.data['github_directory'])
                 cost += cost_incurred
             else:
-                github_outputs, github_document_embeddings, cost_incurred_from_github = read_from_github(protocol['protocol_name'], data.data['github']) 
+                github_outputs, github_document_embeddings, cost_incurred_from_github = read_from_github(protocol['protocol_name'], data.data['github'], data.data['github_doc_link'], data.data['github_directory'])
                 # append the new output to the outputs in the database
                 outputs.extend(github_outputs)
                 # append the new embedding to the embedding in the database
@@ -142,13 +143,14 @@ def answer_question(protocol_id: str, question: str, request: Request):
         (vector_similarity(question_embedding, prev_question['embedding']), prev_question['answer'], prev_question['question']) for prev_question in questions_from_db
     ], reverse=True)
 
-    if question_similarities[0][0] > THRESHOLD_FOR_FUZZY:
+    links = []
+    if len(question_similarities) >= 1 and question_similarities[0][0] > THRESHOLD_FOR_FUZZY:
         answer = question_similarities[0][1]
         total_cost_for_answer = question_cost
     else:
-        answer, answer_cost = answer_query_with_context(question, question_embedding, df_from_db, document_embeddings_from_db)
+        answer, answer_cost, links = answer_query_with_context(question, question_embedding, df_from_db, document_embeddings_from_db)
         total_cost_for_answer = question_cost + answer_cost
-        question_to_add = {"question": question, "answer": answer, "embedding": question_embedding, "usage": total_cost_for_answer}
+        question_to_add = {"question": question, "answer": answer, "embedding": question_embedding, "links": links, "usage": total_cost_for_answer}
         questions_from_db.append(question_to_add)
         data_to_post = {"questions": questions_from_db}
         update_result = request.app.database["data"].update_one(
@@ -156,6 +158,7 @@ def answer_question(protocol_id: str, question: str, request: Request):
         )
 
     print(total_cost_for_answer)
+    print(links)
     protocol['usage'] += total_cost_for_answer
     update_result = request.app.database["protocols"].update_one(
             {"_id": protocol_id}, {"$set": protocol}

@@ -41,6 +41,7 @@ class Protocol(BaseModel):
     usage: float = Field(default=0)
     default_answer: str = Field(default="I don't know. Please check with admin.")
     questions: list = Field(default={})
+    active: bool = Field(default=True)
 
     class Config:
         allow_population_by_field_name = True
@@ -61,6 +62,7 @@ class Protocol(BaseModel):
                 "credits": 100.45,
                 "usage": 0.34,
                 "default_answer": "Please ask admin",
+                "active": True,
                 "questions": [{
                     "question": "",
                     "answer": "",
@@ -81,6 +83,7 @@ class ProtocolUpdate(BaseModel):
     usage: Optional[float]
     default_answer: Optional[str]
     questions: Optional[dict]
+    active: Optional[bool]
 
     class Config:
         allow_population_by_field_name = True
@@ -99,6 +102,7 @@ class ProtocolUpdate(BaseModel):
                 "credits": 10.45,
                 "usage": 8.97,
                 "default_answer": "Please ask admin",
+                "active": True,
                 "questions": {
                     "question": "",
                     "answer": "",

@@ -114,6 +114,9 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"No protocol with user ID {user_id} and protocol ID {protocol_id} found")
+    if not protocol['active']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Protocol with protocol ID {protocol_id} is inactive")
     if (protocol['usage'] + 0.2) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
                             detail=f"Insufficient credits to upload this data")
@@ -155,6 +158,9 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"No protocol with user ID {user_id} and protocol ID {protocol_id} found")
+    if not protocol['active']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Protocol with protocol ID {protocol_id} is inactive")
     if (protocol['usage'] + 0.2) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
                             detail=f"Insufficient credits to upload this data")
@@ -223,8 +229,12 @@ def delete_data(protocol_id: str, data_type: str, request: Request, response: Re
 @question_router.get("/{server_type}/{server_id}", response_description="Get answer to a question")
 def answer_question_for_server(server_type: str, server_id: str, question: str, request: Request):
     search_key = 'servers.' + server_type
-    protocols = request.app.database["protocols"].find({search_key: server_id})
-    answer = get_answer(list(protocols)[0], question, request)
+    protocols = list(request.app.database["protocols"].find({search_key: server_id}))
+    print(len(protocols))
+    if len(protocols) == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Protocol for {server_type} with server id - {server_id} not found")
+    answer = get_answer(protocols[0], question, request)
     return answer
 
 
@@ -236,6 +246,9 @@ def answer_question(protocol_id: str, question: str, request: Request):
 
 
 def get_answer(protocol, question, request):
+    if not protocol['active']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Protocol with protocol ID {protocol['_id']} is inactive")
     data_from_db = request.app.database["data"].find({"protocol_id": protocol['_id']})
     if (protocol['usage'] + 0.4) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,

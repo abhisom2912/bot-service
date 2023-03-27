@@ -28,6 +28,62 @@ class UserUpdate(BaseModel):
         }
 
 
+class Questioner(BaseModel):
+    questioner_id: str = Field(default_factory=uuid.uuid4, alias="_id")
+    protocol_id: str = Field(...)
+    server_type: str = Field(...)
+    questioner_server_id: str = Field(...)
+    user_protocol_limits: dict or None = Field(default={})
+    questions: list = Field(default={})
+
+    class Config:
+        allow_population_by_field_name = True
+        schema_extra = {
+            "example": {
+                "questioner_id": "057gh609-b04a-5v54-b46c-32537c7c2c6e",
+                "server_type": "discord",
+                "questioner_server_id": "12467",
+                "user_protocol_limits": {
+                    "066de609-b04a-4b30-b46c-32537c7f1f6e": {
+                        "first_question_time": "",
+                        "questions_asked": 2
+                    }
+                },
+                "questions": {
+                    "066de609-b04a-4b30-b46c-32537c7f1f6e": [
+                        "What is xyz protocol?"
+                    ]
+                }
+            }
+        }
+
+
+class QuestionerUpdate(BaseModel):
+    protocol_id: Optional[str]
+    server_type: Optional[str]
+    questioner_server_id: Optional[str]
+    user_protocol_limits: Optional[dict]
+    questions: Optional[dict]
+
+    class Config:
+        allow_population_by_field_name = True
+        schema_extra = {
+            "example": {
+                "questioner_id": "057gh609-b04a-5v54-b46c-32537c7c2c6e",
+                "server_type": "discord",
+                "questioner_server_id": "12467",
+                "user_protocol_limits": {
+                    "protocol_id": "066de609-b04a-4b30-b46c-32537c7f1f6e",
+                    "first_question_time": "",
+                    "questions_asked": 2
+                },
+                "questions": {
+                    "question": "What is xyz protocol?",
+                    "protocol_id": "066de609-b04a-4b30-b46c-32537c7f1f6e"
+                }
+            }
+        }
+
 class Protocol(BaseModel):
     protocol_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     user_id: str = Field(...)
@@ -52,8 +108,11 @@ class Protocol(BaseModel):
                 "protocol_name": "Router Protocol",
                 "protocol_description": "A cross-chain communication infra",
                 "servers": {
-                    "discord": "1085331583558488104",
-                    "telegram": ""
+                    "discord": {
+                        "server": "1085331583558488104",
+                        "question_limit_24hr": 5
+                    },
+                    "telegram": {}
                 },
                 "doc_links": {"github": [{"url": "https://github.com/router-protocol/router-chain-docs",
                                           "doc_link": "https://devnet-docs.routerprotocol.com/",
@@ -92,8 +151,11 @@ class ProtocolUpdate(BaseModel):
                 "protocol_name": "Dfyn Exchange",
                 "protocol_description": "Decentralized Exchange",
                 "servers": {
-                    "discord": "1085331583558488104",
-                    "telegram": ""
+                    "discord": {
+                        "server": "1085331583558488104",
+                        "question_limit_24hr": 5
+                    },
+                    "telegram": {}
                 },
                 "doc_links": {"github": [{"url": "https://github.com/router-protocol/router-chain-docs",
                                           "doc_link": "https://devnet-docs.routerprotocol.com/",

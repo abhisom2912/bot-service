@@ -4,6 +4,7 @@ from utilities.fetch_data import *
 from utilities.utility_functions import *
 from models import DataFromUser, DataFromUserUpdate, Data
 import validators
+from datetime import datetime
 
 data_router = APIRouter()
 question_router = APIRouter()
@@ -75,7 +76,8 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
                 if len(outputs) == 0:
                     # github_directory - the specific folder that we need to read within the github repo, if empty then we will read all
                     outputs, document_embeddings, cost_incurred = read_from_github(protocol['protocol_name'],
-                                                                                   data['url'], data['doc_link'], directory)
+                                                                                   data['url'], data['doc_link'],
+                                                                                   directory)
                 else:
                     github_outputs, github_document_embeddings, cost_incurred = read_from_github(
                         protocol['protocol_name'], data['url'], data['doc_link'], directory)
@@ -93,10 +95,12 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
                 duration = 10000 if 'valid_articles_duration_days' not in data else data['valid_articles_duration_days']
                 if len(outputs) == 0:
                     outputs, document_embeddings, cost_incurred = get_data_from_medium(data['username'],
-                                                                                       duration, protocol['protocol_name'])
+                                                                                       duration,
+                                                                                       protocol['protocol_name'])
                 else:
                     medium_outputs, medium_document_embeddings, cost_incurred = get_data_from_medium(data['username'],
-                                                                                                     duration, protocol['protocol_name'])
+                                                                                                     duration, protocol[
+                                                                                                         'protocol_name'])
                     # append the new output to the outputs in the database
                     outputs.extend(medium_outputs)
                     # append the new embedding to the embedding in the database
@@ -187,7 +191,6 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
             else:
                 protocol['doc_links'][key] = data.data[key]
 
-
             data_to_post = {"data": outputs, "embeddings": untuplify_dict_keys(document_embeddings),
                             "embeddings_cost": (cost_from_db + cost)}
             update_result = request.app.database["data"].update_one(
@@ -226,16 +229,71 @@ def delete_data(protocol_id: str, data_type: str, request: Request, response: Re
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Data with protocol ID {protocol_id} not found")
 
 
-@question_router.get("/{server_type}/{server_id}", response_description="Get answer to a question")
-def answer_question_for_server(server_type: str, server_id: str, question: str, request: Request):
-    search_key = 'servers.' + server_type
-    protocols = list(request.app.database["protocols"].find({search_key: server_id}))
-    print(len(protocols))
-    if len(protocols) == 0:
+@question_router.get("/{server_type}/{server_id}/{questioner_id}",
+                     response_description="Get answer to a question")
+def answer_question_for_server(server_type: str, server_id: str, questioner_id: str, question: str,
+                               request: Request):
+    search_key = 'servers.' + server_type + '.server'
+    protocol = request.app.database["protocols"].find_one({search_key: server_id})
+
+    update_questioner_data(protocol, question, questioner_id, request, server_type)
+
+    if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Protocol for {server_type} with server id - {server_id} not found")
-    answer = get_answer(protocols[0], question, request)
+    answer = get_answer(protocol, question, request)
     return answer
+
+
+def update_questioner_data(protocol, question, questioner_id, request, server_type):
+    rate_limit_exists = False
+    try:
+        rate_limit = protocol['servers'][server_type]['question_limit_24hr']
+        rate_limit_exists = True
+    except KeyError:
+        pass
+
+    questioner = request.app.database["questioners"].find_one(
+        {"$and": [{"questioner_id": questioner_id}, {"server_type": server_type}]})
+    protocol_id = protocol['_id']
+    user_protocol_limit = {protocol_id: {"first_question_time": str(datetime.now()),
+                                         "questions_asked": 1}}
+    question_data = {protocol_id: [question]}
+
+    if questioner is None:
+        data_to_post = {"server_type": server_type, "questioner_id": questioner_id,
+                        "user_protocol_limits": user_protocol_limit,
+                        "questions": question_data}
+        new_data = request.app.database["questioners"].insert_one(jsonable_encoder(data_to_post))
+    else:
+        protocol_search_query = "user_protocol_limits." + protocol_id
+        questioner_protocol = request.app.database["questioners"].find_one(
+            {"$and": [{protocol_search_query: {"$exists":True}},
+                      {"questioner_id": questioner_id}, {"server_type": server_type}]})
+        if questioner_protocol is None:
+            questioner['questions'].update(question_data)
+            questioner['user_protocol_limits'].update(user_protocol_limit)
+            update_result = request.app.database["questioners"].update_one(
+                {"_id": questioner['_id']}, {"$set": questioner}
+            )
+        else:
+            time_difference = datetime.now() - datetime.strptime(
+                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'], '%Y-%m-%d %H:%M:%S.%f')
+            if rate_limit_exists and time_difference.total_seconds() > 24 * 60 * 60:
+                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = 1
+                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'] = str(datetime.now())
+                questioner_protocol['questions'][protocol_id].append(question)
+            elif rate_limit_exists and time_difference.total_seconds() <= 24 * 60 * 60 and rate_limit == \
+                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked']:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                    detail=f"Rate limit reached for user on {server_type} for {protocol['protocol_name']}")
+            else:
+                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = \
+                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] + 1
+                questioner_protocol['questions'][protocol_id].append(question)
+            update_result = request.app.database["questioners"].update_one(
+                {"_id": questioner_protocol["_id"]}, {"$set": questioner_protocol}
+            )
 
 
 @question_router.get("/{protocol_id}", response_description="Get answer to a question")

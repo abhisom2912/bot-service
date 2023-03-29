@@ -1,8 +1,10 @@
+import uuid
+
 from fastapi import APIRouter, Body, Request, Response, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from utilities.fetch_data import *
 from utilities.utility_functions import *
-from models import DataFromUser, DataFromUserUpdate, Data
+from models import DataFromUser, DataFromUserUpdate, Data, Questioner
 import validators
 from datetime import datetime
 
@@ -229,14 +231,14 @@ def delete_data(protocol_id: str, data_type: str, request: Request, response: Re
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Data with protocol ID {protocol_id} not found")
 
 
-@question_router.get("/{server_type}/{server_id}/{questioner_id}",
+@question_router.get("/{server_type}/{server_id}/{questioner_server_id}",
                      response_description="Get answer to a question")
-def answer_question_for_server(server_type: str, server_id: str, questioner_id: str, question: str,
+def answer_question_for_server(server_type: str, server_id: str, questioner_server_id: str, question: str,
                                request: Request):
     search_key = 'servers.' + server_type + '.server'
     protocol = request.app.database["protocols"].find_one({search_key: server_id})
 
-    update_questioner_data(protocol, question, questioner_id, request, server_type)
+    update_questioner_data(protocol, question, questioner_server_id, request, server_type)
 
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -245,7 +247,7 @@ def answer_question_for_server(server_type: str, server_id: str, questioner_id: 
     return answer
 
 
-def update_questioner_data(protocol, question, questioner_id, request, server_type):
+def update_questioner_data(protocol, question, questioner_server_id, request, server_type):
     rate_limit_exists = False
     try:
         rate_limit = protocol['servers'][server_type]['question_limit_24hr']
@@ -254,22 +256,22 @@ def update_questioner_data(protocol, question, questioner_id, request, server_ty
         pass
 
     questioner = request.app.database["questioners"].find_one(
-        {"$and": [{"questioner_id": questioner_id}, {"server_type": server_type}]})
+        {"$and": [{"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
     protocol_id = protocol['_id']
     user_protocol_limit = {protocol_id: {"first_question_time": str(datetime.now()),
                                          "questions_asked": 1}}
     question_data = {protocol_id: [question]}
 
     if questioner is None:
-        data_to_post = {"server_type": server_type, "questioner_id": questioner_id,
+        data_to_post = {"server_type": server_type, "questioner_server_id": questioner_server_id,
                         "user_protocol_limits": user_protocol_limit,
-                        "questions": question_data}
+                        "questions": question_data, "_id": uuid.uuid4()}
         new_data = request.app.database["questioners"].insert_one(jsonable_encoder(data_to_post))
     else:
         protocol_search_query = "user_protocol_limits." + protocol_id
         questioner_protocol = request.app.database["questioners"].find_one(
             {"$and": [{protocol_search_query: {"$exists":True}},
-                      {"questioner_id": questioner_id}, {"server_type": server_type}]})
+                      {"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
         if questioner_protocol is None:
             questioner['questions'].update(question_data)
             questioner['user_protocol_limits'].update(user_protocol_limit)

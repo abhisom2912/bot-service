@@ -29,8 +29,7 @@ class UserUpdate(BaseModel):
 
 
 class Questioner(BaseModel):
-    questioner_id: str = Field(default_factory=uuid.uuid4, alias="_id")
-    protocol_id: str = Field(...)
+    questioner_id: str = Field(..., alias="_id")
     server_type: str = Field(...)
     questioner_server_id: str = Field(...)
     user_protocol_limits: dict or None = Field(default={})
@@ -59,7 +58,6 @@ class Questioner(BaseModel):
 
 
 class QuestionerUpdate(BaseModel):
-    protocol_id: Optional[str]
     server_type: Optional[str]
     questioner_server_id: Optional[str]
     user_protocol_limits: Optional[dict]
@@ -69,7 +67,6 @@ class QuestionerUpdate(BaseModel):
         allow_population_by_field_name = True
         schema_extra = {
             "example": {
-                "questioner_id": "057gh609-b04a-5v54-b46c-32537c7c2c6e",
                 "server_type": "discord",
                 "questioner_server_id": "12467",
                 "user_protocol_limits": {
@@ -110,7 +107,8 @@ class Protocol(BaseModel):
                 "servers": {
                     "discord": {
                         "server": "1085331583558488104",
-                        "question_limit_24hr": 5
+                        "question_limit_24hr": 5,
+                        "refresh_days": 7
                     },
                     "telegram": {}
                 },

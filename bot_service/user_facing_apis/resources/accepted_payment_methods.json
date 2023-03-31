@@ -1,0 +1,100 @@
+{
+  "56": {
+    "chain_name": "BSC",
+    "accepted_tokens": [
+      {
+        "token_name": "USDC",
+        "token_address": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d"
+      },
+      {
+        "token_name": "USDT",
+        "token_address": "0x55d398326f99059fF775485246999027B3197955"
+      },
+      {
+        "token_name": "BUSD",
+        "token_address": "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56"
+      }
+    ],
+    "minimum_amount": 1
+  },
+  "137": {
+    "chain_name": "Polygon",
+    "accepted_tokens": [
+      {
+        "token_name": "USDC",
+        "token_address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+      },
+      {
+        "token_name": "USDT",
+        "token_address": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F"
+      },
+      {
+        "token_name": "DAI",
+        "token_address": "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063"
+      }
+    ],
+    "minimum_amount": 1
+  },
+  "1": {
+    "chain_name": "Ethereum",
+    "accepted_tokens": [
+      {
+        "token_name": "USDC",
+        "token_address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+      },
+      {
+        "token_name": "USDT",
+        "token_address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+      },
+      {
+        "token_name": "DAI",
+        "token_address": "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+      },
+      {
+        "token_name": "BUSD",
+        "token_address": "0x4Fabb145d64652a948d72533023f6E7A623C7C53"
+      }
+    ],
+    "minimum_amount": 1
+  },
+  "43114": {
+    "chain_name": "Avalanche",
+    "accepted_tokens": [
+      {
+        "token_name": "USDC",
+        "token_address": "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664"
+      },
+      {
+        "token_name": "USDT",
+        "token_address": "0xc7198437980c041c805A1EDcbA50c1Ce5db95118"
+      },
+      {
+        "token_name": "DAI",
+        "token_address": "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70"
+      },
+      {
+        "token_name": "BUSD",
+        "token_address": "0x19860CCB0A68fd4213aB9D8266F7bBf05A8dDe98"
+      }
+    ],
+    "minimum_amount": 1
+  },
+  "250": {
+    "chain_name": "Fantom",
+    "accepted_tokens": [
+      {
+        "token_name": "USDC",
+        "token_address": "0x04068DA6C83AFCFA0e13ba15A6696662335D5B75"
+      },
+      {
+        "token_name": "USDT",
+        "token_address": "0x049d68029688eAbF473097a2fC38ef61633A3C7A"
+      },
+      {
+        "token_name": "DAI",
+        "token_address": "0x8D11eC38a3EB5E956B052f67Da8Bdc9bef8Abf3E"
+      }
+    ],
+    "minimum_amount": 1
+  }
+}

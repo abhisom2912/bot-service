@@ -235,3 +235,46 @@ class DataFromUserUpdate(BaseModel):
                 "append": True,
             }
         }
+
+class Payment(BaseModel):
+    payment_id: str = Field(default_factory=uuid.uuid4, alias="_id")
+    protocol_id: str = Field(...)
+    payment_details: dict = Field(...)
+
+    class Config:
+        allow_population_by_field_name = True
+        schema_extra = {
+            "example": {
+                "payment_id": "083jj669-s05c-4v63-b46c-98564c7c2c6e",
+                "protocol_id": "057gh609-b04a-5v54-b46c-32537c7c2c6e",
+                "payment_details": {
+                    "transaction_hash": "0xab6e20b7dea98e07adaa89c86a318d1409f1929e21c4f809599d16e217c882b6",
+                    "chain_id": "56",
+                    "chain": "BSC",
+                    "token_address": "0x0cbA60Ca5eF4D42f92A5070A8fEDD13BE93E2861",
+                    "token_symbol": "USDC",
+                    "amount": 10
+                },
+            }
+        }
+
+
+class PaymentUpdate(BaseModel):
+    protocol_id: Optional[str]
+    payment_details: Optional[dict]
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "payment_id": "083jj669-s05c-4v63-b46c-98564c7c2c6e",
+                "protocol_id": "057gh609-b04a-5v54-b46c-32537c7c2c6e",
+                "payment_details": {
+                    "transaction_hash": "0xab6e20b7dea98e07adaa89c86a318d1409f1929e21c4f809599d16e217c882b6",
+                    "chain_id": "56",
+                    "chain": "BSC",
+                    "token_address": "0x0cbA60Ca5eF4D42f92A5070A8fEDD13BE93E2861",
+                    "token_symbol": "USDC",
+                    "amount": 10
+                },
+            }
+        }

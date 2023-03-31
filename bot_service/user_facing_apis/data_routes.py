@@ -4,7 +4,7 @@ from fastapi import APIRouter, Body, Request, Response, HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from utilities.fetch_data import *
 from utilities.utility_functions import *
-from models import DataFromUser, DataFromUserUpdate, Data, Questioner
+from models import DataFromUser, DataFromUserUpdate, Data
 import validators
 from datetime import datetime
 
@@ -238,13 +238,13 @@ def answer_question_for_server(server_type: str, server_id: str, questioner_serv
     search_key = 'servers.' + server_type + '.server'
     protocol = request.app.database["protocols"].find_one({search_key: server_id})
 
-    update_questioner_data(protocol, question, questioner_server_id, request, server_type)
-
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Protocol for {server_type} with server id - {server_id} not found")
-    answer = get_answer(protocol, question, request)
-    return answer
+    update_questioner_data(protocol, question, questioner_server_id, request, server_type)
+    question_answered, answer, links = get_answer(protocol, question, request)
+    response = {"question_answered": question_answered, "answer": answer, "links": links}
+    return response
 
 
 def update_questioner_data(protocol, question, questioner_server_id, request, server_type):
@@ -301,13 +301,14 @@ def update_questioner_data(protocol, question, questioner_server_id, request, se
 @question_router.get("/{protocol_id}", response_description="Get answer to a question")
 def answer_question(protocol_id: str, question: str, request: Request):
     protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
-    answer = get_answer(protocol, question, request)
-    return answer
+    question_answered, answer, links = get_answer(protocol, question, request)
+    response = {"question_answered": question_answered, "answer": answer, "links": links}
+    return response
 
 
 def get_answer(protocol, question, request):
     if not protocol['active']:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Protocol with protocol ID {protocol['_id']} is inactive")
     data_from_db = request.app.database["data"].find({"protocol_id": protocol['_id']})
     if (protocol['usage'] + 0.4) > protocol['credits']:
@@ -333,6 +334,7 @@ def get_answer(protocol, question, request):
     links = []
     if len(question_similarities) >= 1 and question_similarities[0][0] > THRESHOLD_FOR_FUZZY:
         answer = question_similarities[0][1]
+        links = question_similarities[0][2]['links']
         total_cost_for_answer = question_cost
         request.app.database["protocols"].update_one(
             {"_id": protocol['_id'], 'questions.question': question_similarities[0][2]['question']},
@@ -354,7 +356,8 @@ def get_answer(protocol, question, request):
     update_result = request.app.database["protocols"].update_one(
         {"_id": protocol['_id']}, {"$set": {"usage": total_cost}}
     )
-    return answer
+    question_answered = False if answer == protocol['default_answer'] else True
+    return question_answered, answer, links
 
 # @question_router.post("/{protocol_id}", response_description="Add a new question", status_code=status.HTTP_201_CREATED, response_model=Data)
 # def add_question(request: Request, question: DataUpdate = Body(...)):

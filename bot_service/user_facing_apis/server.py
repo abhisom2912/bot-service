@@ -1,13 +1,28 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import dotenv_values
 from pymongo import MongoClient
 from user_routes import user_router
 from protocol_routes import protocol_router
 from data_routes import data_router, question_router
 
+
 config = dotenv_values("../.env")
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:3000",
+    "http://localhost"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def startup_db_client():

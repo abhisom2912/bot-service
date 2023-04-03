@@ -5,27 +5,37 @@ from pydantic import BaseModel, EmailStr, Field
 
 class User(BaseModel):
     user_id: str = Field(default_factory=uuid.uuid4, alias="_id")
-    mail: EmailStr 
+    email: EmailStr
+    discord_username: str = Field(...)
+    discord_id: str = Field(...)
+    discord_avatar: str = Field(...)
 
     class Config:
         allow_population_by_field_name = True
         schema_extra = {
             "example": {
                 "user_id": "066de609-b04a-4b30-b46c-32537c7f1f6e",
-                "mail": "xyz@domain.com",
+                "email": "xyz@domain.com",
+                "discord_username": "Vatsal1927",
+                "discord_id": "844896534736436521",
+                "discord_avatar": "eddd2330942e9e96b8ec4317d8d4268b"
             }
-        }        
+        }
+
 
 class UserUpdate(BaseModel):
-    mail: Optional[str]
+    email: Optional[str]
+    discord_username: Optional[str]
+    discord_avatar: Optional[str]
 
     class Config:
         schema_extra = {
             "example": {
-                "mail": "abc@domain.com"
+                "email": "abc@domain.com",
+                "discord_username": "Vatsal1987",
+                "discord_avatar": "eddd2330942e9e96b8ec4317d8d4268b"
             }
         }
-
 
 
 class Protocol(BaseModel):
@@ -34,10 +44,10 @@ class Protocol(BaseModel):
     protocol_name: str = Field(...)
     protocol_description: str = Field(
         default={"discord_token": "", "telegram_token": ""}, title="The description of the data", max_length=300
-    )    
-    tokens: dict | None = Field(default = {})
-    credits: float = Field(default = 0)
-    usage: float = Field(default = 0)
+    )
+    tokens: dict | None = Field(default={})
+    credits: float = Field(default=0)
+    usage: float = Field(default=0)
 
     class Config:
         allow_population_by_field_name = True
@@ -55,6 +65,7 @@ class Protocol(BaseModel):
                 "usage": 0.34
             }
         }
+
 
 class ProtocolUpdate(BaseModel):
     protocol_name: Optional[str]
@@ -84,8 +95,8 @@ class Data(BaseModel):
     protocol_id: str = Field(...)
     data: list = Field(...)
     embeddings: dict = Field(...)
-    embeddings_cost: float = Field(default = 0)
-    questions: list = Field(default = {})
+    embeddings_cost: float = Field(default=0)
+    questions: list = Field(default={})
 
     class Config:
         allow_population_by_field_name = True
@@ -104,6 +115,7 @@ class Data(BaseModel):
                 }]
             }
         }
+
 
 class DataUpdate(BaseModel):
     data: Optional[list]
@@ -127,7 +139,6 @@ class DataUpdate(BaseModel):
         }
 
 
-
 class DataFromUser(BaseModel):
     data_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     data: dict = Field(...)
@@ -139,11 +150,13 @@ class DataFromUser(BaseModel):
                 "data_id": "083jj669-s05c-4v63-b46c-98564c7c2c6e",
                 "data": {},
             }
-        }   
+        }
+
 
 class DataFromUserUpdate(BaseModel):
     data: dict = Field(...)
     append: bool = Field(default=True)
+
     class Config:
         allow_population_by_field_name = True
         schema_extra = {
@@ -151,4 +164,4 @@ class DataFromUserUpdate(BaseModel):
                 "data": {},
                 "append": True,
             }
-        }   
+        }

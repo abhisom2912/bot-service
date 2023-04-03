@@ -5,6 +5,7 @@ from pymongo import MongoClient
 from user_routes import user_router
 from protocol_routes import protocol_router
 from data_routes import data_router, question_router
+from payment_routes import payment_router
 
 
 config = dotenv_values("../.env")
@@ -38,4 +39,5 @@ app.include_router(user_router, tags=["users"], prefix="/user")
 app.include_router(protocol_router, tags=["protocols"], prefix="/protocol")
 app.include_router(data_router, tags=["data"], prefix="/data")
 app.include_router(question_router, tags=["questions"], prefix="/question")
+app.include_router(payment_router, tags=["payments"], prefix="/payment")
 

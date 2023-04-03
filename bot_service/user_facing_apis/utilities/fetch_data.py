@@ -15,6 +15,7 @@ import ssl
 
 from utilities.scrapers.gitbook_scraper import *
 from utilities.scrapers.pdf_parse_seq import *
+from utilities.scrapers.medium_parser import *
 
 try:
     _create_unverified_https_context = ssl._create_unverified_context
@@ -182,6 +183,9 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
             while element_len < len(dir_elements) - 1:
                 dir_header += dir_elements[element_len].replace('-', ' ') + ': '
                 element_len += 1
+        elif doc_type == 'medium':
+            content_link = dir
+            title = protocol_title + " - articles"
 
         else:
             element_len = 1
@@ -354,7 +358,14 @@ def add_data_array(file_path, content):
     return title_stack
 
 def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
-    title_stack = get_gitbook_data(gitbook_link, '', gitbook_data_type)
+    https_str = "https://"
+    if gitbook_link[len(gitbook_link)-1] == "/":
+        gitbook_link = gitbook_link[0 : len(gitbook_link)-1]
+    inter_str = gitbook_link.replace(https_str, '')
+    base_url = https_str + inter_str.split('/', 1)[0] if len(inter_str.split('/', 1)) > 1  else inter_str
+    first_url = '/' + inter_str.split('/', 1)[1] if len(inter_str.split('/', 1)) > 1  else inter_str
+    title_stack = get_gitbook_data(base_url, first_url, gitbook_data_type)
+    # title_stack = get_gitbook_data(gitbook_link, '', gitbook_data_type)
     outputs = create_data_for_docs(protocol_title, title_stack, '', 'gitbook')
     print('Outputs created for gitbook data')
     df = final_data_for_openai(outputs)
@@ -373,6 +384,17 @@ def get_whitepaper_data(type, document, whitepaper_link, protocol_title):
     document_embeddings, cost_incurred = compute_doc_embeddings(df)
     print('Embeddings created, sending data to db...')
     return outputs, df, document_embeddings, cost_incurred
+
+
+def get_data_from_medium(username, valid_articles_duration_days, protocol_title):
+    title_stack = get_medium_data(username, valid_articles_duration_days)
+    outputs = create_data_for_docs(protocol_title, title_stack, '', 'medium')
+    print('Outputs created for gitbook data')
+    df = final_data_for_openai(outputs)
+    print(df.head)
+    document_embeddings, cost_incurred = compute_doc_embeddings(df)
+    print('Embeddings created, sending data to db...')
+    return outputs, document_embeddings, cost_incurred
 
 
 
@@ -402,7 +424,7 @@ def order_document_sections_by_query_similarity(query_embedding: list[float],
     return document_similarities
 
 
-def construct_prompt(question: str, question_embedding: list[float], context_embeddings: dict, df: pd.DataFrame):
+def construct_prompt(question: str, question_embedding: list[float], context_embeddings: dict, df: pd.DataFrame, default_answer: str):
     """
     Fetch relevant
     """
@@ -430,7 +452,8 @@ def construct_prompt(question: str, question_embedding: list[float], context_emb
     print("Selected ", len(chosen_sections), " document sections:")
     print("\n".join(chosen_sections_indexes_string))
 
-    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, 
+    say """ + default_answer + """\n\nContext:\n"""
 
     return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:", chosen_sections_indexes
 
@@ -440,13 +463,15 @@ def answer_query_with_context(
         question_embedding: list,
         df: pd.DataFrame,
         document_embeddings: dict[tuple[str, str], np.array],
+        default_answer: str,
         show_prompt: bool = False
 ):
     prompt, chosen_sections_indexes = construct_prompt(
         query,
         question_embedding,
         document_embeddings,
-        df
+        df,
+        default_answer
     )
     if show_prompt:
         print(prompt)

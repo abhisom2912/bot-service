@@ -9,15 +9,8 @@ user_router = APIRouter()
 @user_router.post("/", response_description="Sign in a user using Discord", status_code=status.HTTP_201_CREATED)
 def create_user(request: Request, user: User = Body(...)):
     user = jsonable_encoder(user)
-    existing_user = request.app.database["users"].find_one(
-        {"discord_id": user['discord_id']})
-    print(existing_user)
-    if existing_user:
-        del user["_id"]
-        update_result = request.app.database["users"].update_one(
-            {"_id": existing_user["_id"]}, {"$set": user})
-        return existing_user["_id"]
-        # raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A user with this email already exists")
+    if request.app.database["users"].find_one( {"email": user['email']} ):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"This email already exists")
     new_user = request.app.database["users"].insert_one(user)
     return new_user.inserted_id
     # created_user = request.app.database["users"].find_one(

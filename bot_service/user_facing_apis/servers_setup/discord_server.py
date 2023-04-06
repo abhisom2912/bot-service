@@ -44,7 +44,6 @@ def start_discord_bot():
             return
 
         if message.content.lower().find('@1072338244085227623'.lower()) != -1 or message.clean_content.lower().find('@scarlett') != -1:
-            print(message.content)
             question = message.clean_content.replace('@scarlett', '').strip()
             title = "Q: " + question
             question_answered, answer, links = await sync_to_async(get_answer)(question, str(message.guild.id), str(message.author.id))

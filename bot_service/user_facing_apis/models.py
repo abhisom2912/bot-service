@@ -111,6 +111,7 @@ class Protocol(BaseModel):
     usage: float = Field(default=0)
     default_answer: str = Field(default="I don't know. Please check with admin.")
     questions: list = Field(default={})
+    archived_questions: list = Field(default={})
     active: bool = Field(default=True)
 
     class Config:
@@ -143,6 +144,13 @@ class Protocol(BaseModel):
                     "embedding": "",
                     "usage": "",
                     "frequency": ""
+                }],
+                "archived_questions": [{
+                    "question": "",
+                    "answer": "",
+                    "embedding": "",
+                    "usage": "",
+                    "frequency": ""
                 }]
             }
         }
@@ -157,6 +165,7 @@ class ProtocolUpdate(BaseModel):
     usage: Optional[float]
     default_answer: Optional[str]
     questions: Optional[dict]
+    archived_questions: Optional[dict]
     active: Optional[bool]
 
     class Config:
@@ -181,6 +190,13 @@ class ProtocolUpdate(BaseModel):
                 "default_answer": "Please ask admin",
                 "active": True,
                 "questions": {
+                    "question": "",
+                    "answer": "",
+                    "embedding": "",
+                    "usage": "",
+                    "frequency": ""
+                },
+                "archived_questions": {
                     "question": "",
                     "answer": "",
                     "embedding": "",

@@ -117,6 +117,7 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
                   status_code=status.HTTP_201_CREATED, response_model=Data)
 def create_data(user_id: str, protocol_id: str, request: Request, data: DataFromUser = Body(...)):
     protocol = request.app.database["protocols"].find_one({"$and": [{"_id": protocol_id}, {"user_id": user_id}]})
+
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"No protocol with user ID {user_id} and protocol ID {protocol_id} found")
@@ -130,6 +131,8 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
         if request.app.database["data"].find_one({"$and": [{"protocol_id": protocol_id}, {"data_type": data_type}]}):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                                 detail=f"Data for this protocol and data type already exists. If you want to update the data, please use the update endpoint.")
+
+    protocol = archive_existing_questions(protocol_id, request)
 
     for key in data.data.keys():
         outputs, document_embeddings, cost = fetch_outputs_and_embeddings(protocol, key, data.data[key])
@@ -162,6 +165,7 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
 @data_router.put("/{user_id}/{protocol_id}", response_description="Update data", response_model=Data)
 def update_data(user_id: str, protocol_id: str, request: Request, data: DataFromUserUpdate = Body(...)):
     protocol = request.app.database["protocols"].find_one({"$and": [{"_id": protocol_id}, {"user_id": user_id}]})
+
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"No protocol with user ID {user_id} and protocol ID {protocol_id} found")
@@ -171,6 +175,8 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     if (protocol['usage'] + 0.2) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
                             detail=f"Insufficient credits to upload this data")
+
+    protocol = archive_existing_questions(protocol_id, request)
 
     for key in data.data.keys():
         outputs, document_embeddings, cost = fetch_outputs_and_embeddings(protocol, key, data.data[key])
@@ -360,6 +366,18 @@ def get_answer(protocol, question, request):
     )
     question_answered = False if answer == protocol['default_answer'] else True
     return question_answered, answer, links
+
+
+def archive_existing_questions(protocol_id, request):
+    protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
+    protocol['archived_questions'] = protocol['archived_questions'] + protocol['questions']
+    protocol['questions'] = []
+    update_result = request.app.database["protocols"].update_one(
+        {"_id": protocol_id}, {"$set": protocol}
+    )
+    return request.app.database["protocols"].find_one({"_id": protocol_id})
+
+
 
 # @question_router.post("/{protocol_id}", response_description="Add a new question", status_code=status.HTTP_201_CREATED, response_model=Data)
 # def add_question(request: Request, question: DataUpdate = Body(...)):

@@ -22,7 +22,7 @@ def create_protocol(request: Request, data: ContactUs = Body(...)):
 
     # Composing the mail
     msg = EmailMessage()
-    msg.set_content('A new query has come via the contact us form. Please check.')
+    msg.set_content('A new query has come via the contact us form. \nUser message:' + data["message"] + '\nUser email address:' + data["email"])
 
     msg['Subject'] = "Scarlett - New Form Entry"
     msg['From'] = "scarlettai.official@gmail.com"

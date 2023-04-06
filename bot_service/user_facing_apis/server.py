@@ -6,6 +6,7 @@ from user_routes import user_router
 from protocol_routes import protocol_router
 from data_routes import data_router, question_router
 from payment_routes import payment_router
+from misc_routes import misc_router
 
 
 config = dotenv_values("../.env")
@@ -14,7 +15,8 @@ app = FastAPI()
 
 origins = [
     "http://localhost:3000",
-    "http://localhost"
+    "http://localhost",
+    "https://scarlett-ui.vercel.app/"
 ]
 
 app.add_middleware(
@@ -40,4 +42,4 @@ app.include_router(protocol_router, tags=["protocols"], prefix="/protocol")
 app.include_router(data_router, tags=["data"], prefix="/data")
 app.include_router(question_router, tags=["questions"], prefix="/question")
 app.include_router(payment_router, tags=["payments"], prefix="/payment")
-
+app.include_router(misc_router, tags=["misc"], prefix="/general")

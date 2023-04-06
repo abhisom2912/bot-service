@@ -2,6 +2,23 @@ import uuid
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
+class ContactUs(BaseModel):
+    contactus_id: str = Field(default_factory=uuid.uuid4, alias="_id")
+    name: str = Field(default="Name unknown")
+    email: EmailStr
+    message: str = Field(...)
+
+    class Config:
+        allow_population_by_field_name = True
+        schema_extra = {
+            "example": {
+                "contactus_id": "066de609-b04a-4b30-b46c-32537c7f1f6e",           
+                "name": "John Doe",
+                "email": "xyz@domain.com",
+                "message": "I want to integrate scarlett"
+            }
+        }
+
 
 class User(BaseModel):
     user_id: str = Field(default_factory=uuid.uuid4, alias="_id")

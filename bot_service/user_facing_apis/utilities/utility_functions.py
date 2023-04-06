@@ -10,14 +10,14 @@ def send_mail(receiver_mail):
     server.starttls()
     
     # Authentication
-    server.login("ashuvswild@gmail.com", "qvpzibicttxpaaqf")
+    server.login("scarlettai.official@gmail.com", "uqjbuvftimpwezgv")
 
     # Composing the mail
     msg = EmailMessage()
     msg.set_content('Your data has been uploaded successfully on our server. You can now start asking your questions.')
 
     msg['Subject'] = 'Scarlett'
-    msg['From'] = "ashuvswild@gmail.com"
+    msg['From'] = "scarlettai.official@gmail.com"
     msg['To'] = receiver_mail
     
     # Send mail

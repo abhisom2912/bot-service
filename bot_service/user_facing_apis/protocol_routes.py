@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Body, Request, Response, HTTPException, status
 from fastapi.encoders import jsonable_encoder
+from datetime import datetime
 
 from models import Protocol, ProtocolUpdate
+import uuid
 
 protocol_router = APIRouter()
 
@@ -53,6 +55,23 @@ def update_protocol(user_id: str, id: str, request: Request, protocol: ProtocolU
         return existing_protocol
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Protocol with ID {id} not found")
+
+
+@protocol_router.put("/addResponse", response_description="Update mod responses")
+def add_mod_response(request: Request, server_type: str=Body(...), server_id: str=Body(...), question: str=Body(...), response: str=Body(...)):
+    search_key = 'servers.' + server_type + '.server'
+    protocol = request.app.database["protocols"].find_one({search_key: server_id})
+
+    if protocol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Protocol for {server_type} with server id - {server_id} not found")
+
+    mod_response = {'id': str(uuid.uuid4()), 'question': question, 'answer': response, 'server': server_type, 'added_time': datetime.now(),
+                    'is_trained': False, 'train_time': datetime(9999, 12, 31)}
+    protocol['mod_responses'].append(mod_response)
+    update_result = request.app.database["protocols"].update_one(
+        {"_id": protocol['_id']}, {"$set": protocol}
+    )
 
 
 @protocol_router.delete("/{user_id}/{id}", response_description="Delete a protocol")

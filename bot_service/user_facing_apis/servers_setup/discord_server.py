@@ -1,11 +1,11 @@
 import discord
 from asgiref.sync import sync_to_async
-from datetime import datetime
+from ..utilities.utility_functions import *
 from dotenv import dotenv_values
 import requests
 import json
 
-config = dotenv_values("../../.env")
+config = dotenv_values("bot_service/.env")
 
 
 def get_answer(question, server_id, questioner_id):
@@ -26,6 +26,17 @@ def get_answer(question, server_id, questioner_id):
         return False, usage_exceeded_message, []
     else:
         return False, unknown_error_message, []
+
+
+def update_mod_response(question, response, server_id):
+    # clean_question = question.replace("?", '').replace('&', 'and')
+    body = {
+        "server_type": "discord",
+        "server_id": server_id,
+        "question": question,
+        "response": response
+    }
+    requests.put(config['BASE_API_URL'] + "protocol/addResponse", json.dumps(body))
 
 
 def start_discord_bot():
@@ -63,6 +74,16 @@ def start_discord_bot():
                                     value="To read more, check out the following links -" + link_text, inline=False)
             # await message.reply(embed = embed_var)
             await message.channel.send(embed=embed_var)
+
+        elif message.reference and (message.author.guild_permissions.ban_members or
+                                    message.author.guild_permissions.kick_members or
+                                    message.author.guild_permissions.moderate_members or
+                                    message.author.guild_permissions.mute_members):
+            if 'gif' not in message.clean_content and check_if_question(message.reference.resolved.clean_content):
+                question = " ".join(filter(lambda x:x[0]!='@', message.reference.resolved.clean_content.split()))
+                response = " ".join(filter(lambda x:x[0]!='@', message.clean_content.split()))
+                print(question + '-> ' + response)
+                await sync_to_async(update_mod_response)(question, response, str(message.guild.id))
 
     client.run(config['DISCORD_TOKEN'])
 

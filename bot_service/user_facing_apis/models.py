@@ -113,6 +113,7 @@ class Protocol(BaseModel):
     questions: list = Field(default={})
     archived_questions: list = Field(default={})
     active: bool = Field(default=True)
+    mod_responses: bool = Field(default=True)
 
     class Config:
         allow_population_by_field_name = True
@@ -126,7 +127,8 @@ class Protocol(BaseModel):
                     "discord": {
                         "server": "1085331583558488104",
                         "question_limit_24hr": 5,
-                        "refresh_days": 7
+                        "refresh_days": 7,
+                        "enable_mod_training": True
                     },
                     "telegram": {}
                 },
@@ -151,6 +153,14 @@ class Protocol(BaseModel):
                     "embedding": "",
                     "usage": "",
                     "frequency": ""
+                }],
+                "mod_responses": [{
+                    "question": "",
+                    "answer": "",
+                    "server": "",
+                    "added_time": "",
+                    "is_trained": "",
+                    "train_time": ""
                 }]
             }
         }
@@ -167,6 +177,7 @@ class ProtocolUpdate(BaseModel):
     questions: Optional[dict]
     archived_questions: Optional[dict]
     active: Optional[bool]
+    mod_responses: Optional[dict]
 
     class Config:
         allow_population_by_field_name = True
@@ -177,7 +188,9 @@ class ProtocolUpdate(BaseModel):
                 "servers": {
                     "discord": {
                         "server": "1085331583558488104",
-                        "question_limit_24hr": 5
+                        "question_limit_24hr": 5,
+                        "refresh_days": 7,
+                        "enable_mod_training": True
                     },
                     "telegram": {}
                 },
@@ -202,6 +215,14 @@ class ProtocolUpdate(BaseModel):
                     "embedding": "",
                     "usage": "",
                     "frequency": ""
+                },
+                "mod_responses": {
+                    "question": "",
+                    "answer": "",
+                    "server": "",
+                    "added_time": "",
+                    "is_trained": "",
+                    "train_time": ""
                 }
             }
         }

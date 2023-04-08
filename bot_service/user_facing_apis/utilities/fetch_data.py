@@ -37,6 +37,7 @@ ENCODING = "cl100k_base"
 min_token_limit = 10
 EMBEDDING_COST = 0.0004
 COMPLETIONS_COST = 0.03
+max_len = 1500
 
 encoding = tiktoken.get_encoding(ENCODING)
 separator_len = len(encoding.encode(SEPARATOR))
@@ -166,7 +167,6 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
     max_level = 0
     nheadings, ncontents, ntitles, nlinks = [], [], [], []
     outputs = []
-    max_len = 1500
 
     for level, header, content, dir in title_stack:
         final_header = header
@@ -397,6 +397,35 @@ def get_data_from_medium(username, valid_articles_duration_days, protocol_title)
     return outputs, document_embeddings, cost_incurred
 
 
+def get_data_for_mod_responses(responses, protocol_title):
+    outputs = create_data_for_mod_responses(responses, protocol_title)
+    df = final_data_for_openai(outputs)
+    document_embeddings, cost_incurred = compute_doc_embeddings(df)
+    return outputs, document_embeddings, cost_incurred
+
+
+def create_data_for_mod_responses(responses, protocol_title):
+    nheadings, ncontents, ntitles, nlinks = [], [], [], []
+    outputs = []
+    for response in responses:
+        nheadings.append(response['question'])
+        ncontents.append(response['answer'])
+        ntitles.append(protocol_title + ' - mod responses')
+        nlinks.append('')
+    ncontent_ntokens = [
+        count_tokens(c)
+        + 3
+        + count_tokens(" ".join(h.split(" ")[1:-1]))
+        - (1 if len(c) == 0 else 0)
+        for h, c in zip(nheadings, ncontents)
+    ]
+    for title, h, c, t, l in zip(ntitles, nheadings, ncontents, ncontent_ntokens, nlinks):
+        if (t < max_len and t > min_token_limit):
+            outputs += [(title, h, c, t, l)]
+        elif (t >= max_len):
+            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)), l)]
+    return outputs
+
 
 # Functions to help answer queries
 
@@ -481,7 +510,11 @@ def answer_query_with_context(
         **COMPLETIONS_API_PARAMS
     )
 
+    answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
+
     links = []
+    if df.loc[chosen_sections_indexes[0]]['link'] == '':
+        return response["choices"][0]["text"].strip(" \n"), answer_cost, links
     for section_index in chosen_sections_indexes:
         document_section = df.loc[section_index]
         link = document_section['link']
@@ -490,5 +523,4 @@ def answer_query_with_context(
         if len(links) >= 2:
             break
 
-    answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
     return response["choices"][0]["text"].strip(" \n"), answer_cost, links

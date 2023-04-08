@@ -16,37 +16,6 @@ COMPLETIONS_COST = 0.03
 THRESHOLD_FOR_FUZZY = 0.95
 
 
-# def fetch_outputs_and_embeddings(protocol, data):
-#     outputs = []
-#     document_embeddings = {}
-#     cost = 0
-#     if 'gitbook' in data.data.keys():
-#         if validators.url(data.data['gitbook']):
-#             print(data.data['gitbook'])
-#             gitbook_data_type = "whitepaper"
-#             outputs, document_embeddings, cost_incurred = get_data_from_gitbook(gitbook_data_type, data.data['gitbook'], protocol['protocol_name'])
-#             cost += cost_incurred
-#         else:
-#             print("Empty or invalid GitBook link")
-#     if 'github' in data.data.keys():
-#         if validators.url(data.data['github']) and 'github' in data.data['github']:
-#             if len(outputs) == 0:
-#                 print(protocol['protocol_name'])
-#                 print(data.data['github'])
-#                 # github_directory - the specific folder that we need to read within the github repo, if empty then we will read all
-#                 outputs, document_embeddings, cost_incurred = read_from_github(protocol['protocol_name'], data.data['github'], data.data['github_doc_link'], data.data['github_directory'])
-#                 cost += cost_incurred
-#             else:
-#                 github_outputs, github_document_embeddings, cost_incurred_from_github = read_from_github(protocol['protocol_name'], data.data['github'], data.data['github_doc_link'], data.data['github_directory'])
-#                 # append the new output to the outputs in the database
-#                 outputs.extend(github_outputs)
-#                 # append the new embedding to the embedding in the database
-#                 document_embeddings.update(github_document_embeddings)
-#                 cost += cost_incurred_from_github
-#         else:
-#             print("Empty or invalid GitHub link")
-#     return outputs, document_embeddings, cost
-
 # {"gitbook":[{"url":"abc"}, {"url":"xby"}]}
 # {"github":[{"url":"https://github.com/router-protocol/router-chain-docs", "doc_link":"https://devnet-docs.routerprotocol.com/", "directory":"docs"}, {"url":"xby", "doc_link":"abc", "directory":"docs"}]}
 def fetch_outputs_and_embeddings(protocol, data_type, datas):
@@ -132,8 +101,6 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
             raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                                 detail=f"Data for this protocol and data type already exists. If you want to update the data, please use the update endpoint.")
 
-    protocol = archive_existing_questions(protocol_id, request)
-
     for key in data.data.keys():
         outputs, document_embeddings, cost = fetch_outputs_and_embeddings(protocol, key, data.data[key])
         protocol['usage'] += cost
@@ -157,6 +124,7 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     update_result = request.app.database["protocols"].update_one(
         {"_id": protocol_id}, {"$set": protocol}
     )
+    protocol = archive_existing_questions(protocol_id, request)
     send_mail(user['email'])
     return created_data
 
@@ -175,8 +143,6 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     if (protocol['usage'] + 0.2) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
                             detail=f"Insufficient credits to upload this data")
-
-    protocol = archive_existing_questions(protocol_id, request)
 
     for key in data.data.keys():
         outputs, document_embeddings, cost = fetch_outputs_and_embeddings(protocol, key, data.data[key])
@@ -216,7 +182,75 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     update_result = request.app.database["protocols"].update_one(
         {"_id": protocol_id}, {"$set": protocol}
     )
+    protocol = archive_existing_questions(protocol_id, request)
     return updated_data
+
+
+@data_router.put("/trainUsingModResponses", response_description="Train using mod responses")
+def train_using_mod_responses(request: Request, protocol_id: str=Body(...), reset: bool=Body(...)):
+    protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
+
+    if protocol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"No protocol with protocol ID {protocol_id} found")
+    if not protocol['active']:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Protocol with protocol ID {protocol_id} is inactive")
+    if (protocol['usage'] + 0.2) > protocol['credits']:
+        raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
+                            detail=f"Insufficient credits to upload this data")
+
+    valid_servers_for_training = {key : val for key, val in protocol['servers'].items() if 'enable_mod_training' in val.keys() and val['enable_mod_training']}
+    if not reset:
+        filtered_arr = [response for response in protocol['mod_responses'] if not response['is_trained']
+                        and response['server'] in valid_servers_for_training.keys() and
+                        (datetime.now() - response['added_time'] <=
+                         timedelta(seconds=valid_servers_for_training[response['server']]['mod_training_valid_days'] * 24 * 60 * 60)
+                         if 'mod_training_valid_days' in valid_servers_for_training[response['server']].keys() is not None else True)]
+    else:
+        filtered_arr = [response for response in protocol['mod_responses'] if response['server'] in
+                        valid_servers_for_training.keys() and (datetime.now() - response['added_time'] <=
+                         timedelta(seconds=valid_servers_for_training[response['server']]['mod_training_valid_days'] * 24 * 60 * 60)
+                         if 'mod_training_valid_days' in valid_servers_for_training[response['server']].keys() is not None else True)]
+
+    if len(filtered_arr) == 0:
+        raise HTTPException(status_code=status.HTTP_204_NO_CONTENT, detail=f"Nothing to train from")
+
+    outputs, document_embeddings, cost = get_data_for_mod_responses(filtered_arr, protocol['protocol_name'])
+
+    data_from_db = request.app.database["data"].find_one(
+        {"$and": [{"protocol_id": protocol_id}, {"data_type": 'mod_responses'}]})
+    protocol['usage'] += cost
+
+    if data_from_db is None:
+        data_to_post = {"_id": uuid.uuid4(), "protocol_id": protocol_id, "data": outputs, "data_type": 'mod_responses',
+                        "embeddings": untuplify_dict_keys(document_embeddings), "embeddings_cost": cost}
+        new_data = request.app.database["data"].insert_one(jsonable_encoder(data_to_post))
+    else:
+        cost_from_db = data_from_db['embeddings_cost']
+        if not reset:
+            outputs_from_db = data_from_db['data']
+            document_embeddings_from_db = tuplify_dict_keys(data_from_db['embeddings'])
+            outputs.extend(outputs_from_db)
+            document_embeddings.update(document_embeddings_from_db)
+        data_to_post = {"data": outputs, "embeddings": untuplify_dict_keys(document_embeddings),
+                        "embeddings_cost": (cost_from_db + cost)}
+        update_result = request.app.database["data"].update_one(
+            {"$and": [{"protocol_id": protocol_id}, {"data_type": 'mod_responses'}]},
+            {"$set": jsonable_encoder(data_to_post)}
+        )
+
+    updated_ids = [value['id'] for value in filtered_arr]
+    for response in protocol['mod_responses']:
+        if response['id'] in updated_ids:
+            response['is_trained'] = True
+            response['train_time'] = datetime.now()
+
+    update_result = request.app.database["protocols"].update_one(
+        {"_id": protocol_id}, {"$set": protocol}
+    )
+    protocol = archive_existing_questions(protocol_id, request)
+    return {'status' : 'bot successfully trained with mod reponses data'}
 
 
 @data_router.get("/{protocol_id}/{data_type}", response_description="Get data by id", response_model=Data)
@@ -255,60 +289,12 @@ def answer_question_for_server(server_type: str, server_id: str, questioner_serv
     return response
 
 
-def update_questioner_data(protocol, question, questioner_server_id, request, server_type):
-    rate_limit_exists = False
-    try:
-        rate_limit = protocol['servers'][server_type]['question_limit_24hr']
-        rate_limit_exists = True
-    except KeyError:
-        pass
-
-    questioner = request.app.database["questioners"].find_one(
-        {"$and": [{"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
-    protocol_id = protocol['_id']
-    user_protocol_limit = {protocol_id: {"first_question_time": str(datetime.now()),
-                                         "questions_asked": 1}}
-    question_data = {protocol_id: [question]}
-
-    if questioner is None:
-        data_to_post = {"server_type": server_type, "questioner_server_id": questioner_server_id,
-                        "user_protocol_limits": user_protocol_limit,
-                        "questions": question_data, "_id": uuid.uuid4()}
-        new_data = request.app.database["questioners"].insert_one(jsonable_encoder(data_to_post))
-    else:
-        protocol_search_query = "user_protocol_limits." + protocol_id
-        questioner_protocol = request.app.database["questioners"].find_one(
-            {"$and": [{protocol_search_query: {"$exists":True}},
-                      {"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
-        if questioner_protocol is None:
-            questioner['questions'].update(question_data)
-            questioner['user_protocol_limits'].update(user_protocol_limit)
-            update_result = request.app.database["questioners"].update_one(
-                {"_id": questioner['_id']}, {"$set": questioner}
-            )
-        else:
-            time_difference = datetime.now() - datetime.strptime(
-                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'], '%Y-%m-%d %H:%M:%S.%f')
-            if rate_limit_exists and time_difference.total_seconds() > 24 * 60 * 60:
-                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = 1
-                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'] = str(datetime.now())
-                questioner_protocol['questions'][protocol_id].append(question)
-            elif rate_limit_exists and time_difference.total_seconds() <= 24 * 60 * 60 and rate_limit == \
-                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked']:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                    detail=f"Rate limit reached for user on {server_type} for {protocol['protocol_name']}")
-            else:
-                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = \
-                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] + 1
-                questioner_protocol['questions'][protocol_id].append(question)
-            update_result = request.app.database["questioners"].update_one(
-                {"_id": questioner_protocol["_id"]}, {"$set": questioner_protocol}
-            )
-
-
 @question_router.get("/{protocol_id}", response_description="Get answer to a question")
 def answer_question(protocol_id: str, question: str, request: Request):
     protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
+    if protocol is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"Protocol with id {protocol_id} not found")
     question_answered, answer, links = get_answer(protocol, question, request)
     response = {"question_answered": question_answered, "answer": answer, "links": links}
     return response
@@ -378,6 +364,55 @@ def archive_existing_questions(protocol_id, request):
     return request.app.database["protocols"].find_one({"_id": protocol_id})
 
 
+def update_questioner_data(protocol, question, questioner_server_id, request, server_type):
+    rate_limit_exists = False
+    try:
+        rate_limit = protocol['servers'][server_type]['question_limit_24hr']
+        rate_limit_exists = True
+    except KeyError:
+        pass
+
+    questioner = request.app.database["questioners"].find_one(
+        {"$and": [{"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
+    protocol_id = protocol['_id']
+    user_protocol_limit = {protocol_id: {"first_question_time": str(datetime.now()),
+                                         "questions_asked": 1}}
+    question_data = {protocol_id: [question]}
+
+    if questioner is None:
+        data_to_post = {"server_type": server_type, "questioner_server_id": questioner_server_id,
+                        "user_protocol_limits": user_protocol_limit,
+                        "questions": question_data, "_id": uuid.uuid4()}
+        new_data = request.app.database["questioners"].insert_one(jsonable_encoder(data_to_post))
+    else:
+        protocol_search_query = "user_protocol_limits." + protocol_id
+        questioner_protocol = request.app.database["questioners"].find_one(
+            {"$and": [{protocol_search_query: {"$exists":True}},
+                      {"questioner_server_id": questioner_server_id}, {"server_type": server_type}]})
+        if questioner_protocol is None:
+            questioner['questions'].update(question_data)
+            questioner['user_protocol_limits'].update(user_protocol_limit)
+            update_result = request.app.database["questioners"].update_one(
+                {"_id": questioner['_id']}, {"$set": questioner}
+            )
+        else:
+            time_difference = datetime.now() - datetime.strptime(
+                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'], '%Y-%m-%d %H:%M:%S.%f')
+            if rate_limit_exists and time_difference.total_seconds() > 24 * 60 * 60:
+                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = 1
+                questioner_protocol['user_protocol_limits'][protocol_id]['first_question_time'] = str(datetime.now())
+                questioner_protocol['questions'][protocol_id].append(question)
+            elif rate_limit_exists and time_difference.total_seconds() <= 24 * 60 * 60 and rate_limit == \
+                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked']:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                    detail=f"Rate limit reached for user on {server_type} for {protocol['protocol_name']}")
+            else:
+                questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] = \
+                    questioner_protocol['user_protocol_limits'][protocol_id]['questions_asked'] + 1
+                questioner_protocol['questions'][protocol_id].append(question)
+            update_result = request.app.database["questioners"].update_one(
+                {"_id": questioner_protocol["_id"]}, {"$set": questioner_protocol}
+            )
 
 # @question_router.post("/{protocol_id}", response_description="Add a new question", status_code=status.HTTP_201_CREATED, response_model=Data)
 # def add_question(request: Request, question: DataUpdate = Body(...)):

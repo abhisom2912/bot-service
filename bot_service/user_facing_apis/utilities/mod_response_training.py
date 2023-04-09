@@ -15,7 +15,6 @@ def get_valid_protocol_ids():
             if 'enable_mod_training' in protocol['servers'][server].keys() and \
                     protocol['servers'][server]['enable_mod_training']:
                 protocol_ids.append(protocol['_id'])
-    print(protocol_ids)
     return protocol_ids
 
 
@@ -40,4 +39,5 @@ def read_command_line_params():
 
 if __name__ == '__main__':
     args = read_command_line_params()
-    trigger_training_for_protocols(get_valid_protocol_ids(), args['reset_flag'])
+    reset_flag = args['reset_flag'] if 'reset_flag' in args.keys() else False
+    trigger_training_for_protocols(get_valid_protocol_ids(), reset_flag)

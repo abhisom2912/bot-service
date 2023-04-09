@@ -39,5 +39,5 @@ def read_command_line_params():
 
 
 if __name__ == '__main__':
-    arguments = read_command_line_params()
-    trigger_training_for_protocols(get_valid_protocol_ids(), arguments['reset_flag'])
+    args = read_command_line_params()
+    trigger_training_for_protocols(get_valid_protocol_ids(), args['reset_flag'])

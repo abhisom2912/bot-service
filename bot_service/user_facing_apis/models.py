@@ -113,7 +113,7 @@ class Protocol(BaseModel):
     questions: list = Field(default={})
     archived_questions: list = Field(default={})
     active: bool = Field(default=True)
-    mod_responses: bool = Field(default=True)
+    mod_responses: list = Field(default=True)
 
     class Config:
         allow_population_by_field_name = True

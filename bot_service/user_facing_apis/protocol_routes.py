@@ -23,10 +23,16 @@ def create_protocol(request: Request, protocol: Protocol = Body(...)):
     return created_protocol
 
 
-@protocol_router.get("/{user_id}", response_description="List all protocols of a particular user",
+@protocol_router.get("/getProtocolByUser/{user_id}", response_description="List all protocols of a particular user",
                      response_model=list[Protocol])
 def list_protocols(user_id: str, request: Request):
     protocols = list(request.app.database["protocols"].find({"user_id": user_id}, limit=100))
+    return protocols
+
+
+@protocol_router.get("/getAllProtocols", response_description="List all protocols", response_model=list[Protocol])
+def list_all_protocols(request: Request):
+    protocols = list(request.app.database["protocols"].find())
     return protocols
 
 

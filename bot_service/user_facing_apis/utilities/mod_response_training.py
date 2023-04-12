@@ -41,3 +41,4 @@ if __name__ == '__main__':
     args = read_command_line_params()
     reset_flag = args['reset_flag'] if 'reset_flag' in args.keys() else False
     trigger_training_for_protocols(get_valid_protocol_ids(), reset_flag)
+    print('Process completed successfully!')

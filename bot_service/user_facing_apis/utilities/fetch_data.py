@@ -363,7 +363,7 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
         gitbook_link = gitbook_link[0 : len(gitbook_link)-1]
     inter_str = gitbook_link.replace(https_str, '')
     base_url = https_str + inter_str.split('/', 1)[0] if len(inter_str.split('/', 1)) > 1  else inter_str
-    first_url = '/' + inter_str.split('/', 1)[1] if len(inter_str.split('/', 1)) > 1  else inter_str
+    first_url = '/' + inter_str.split('/', 1)[1] if len(inter_str.split('/', 1)) > 1  else ''
     title_stack = get_gitbook_data(base_url, first_url, gitbook_data_type)
     # title_stack = get_gitbook_data(gitbook_link, '', gitbook_data_type)
     outputs = create_data_for_docs(protocol_title, title_stack, '', 'gitbook')

@@ -6,6 +6,8 @@ import requests
 import json
 
 config = dotenv_values("bot_service/.env")
+list_of_exempted_server_ids = config['EXEMPTED_SERVER_IDS'].split(',') if \
+    'EXEMPTED_SERVER_IDS' in config.keys() is not None else []
 
 
 def get_answer(question, server_id, questioner_id):
@@ -14,7 +16,11 @@ def get_answer(question, server_id, questioner_id):
     protocol_not_found_message = 'We couldn\'t find any active protocol docs for this server. Please contact admin to onboard Scarlett on this server.'
     unknown_error_message = 'Unknown error occurred. Please try again or report to admin.'
     query_params = "discord/" +  server_id + "/" + questioner_id + "?question=" + question
-    response = requests.get(config['BASE_API_URL'] + "question/" + query_params)
+    if server_id in list_of_exempted_server_ids:
+        response = requests.get(config['BASE_API_URL'] + "question/masterApi/getAnswerFromAnyProtocol")
+    else:
+        response = requests.get(config['BASE_API_URL'] + "question/" + query_params)
+
     if response.status_code == 200:
         response_json = json.loads(response.content.decode('utf-8'))
         return response_json['question_answered'], response_json['answer'], response_json['links']

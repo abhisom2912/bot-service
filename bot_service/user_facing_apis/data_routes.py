@@ -414,6 +414,46 @@ def update_questioner_data(protocol, question, questioner_server_id, request, se
                 {"_id": questioner_protocol["_id"]}, {"$set": questioner_protocol}
             )
 
+
+
+@question_router.get("/masterApi/getAnswerFromAnyProtocol", response_description="Get answer to a question")
+def answer_question(question: str, request: Request):
+    question_answered, answer, links = get_answer_all_protocols(question, request)
+    response = {"question_answered": question_answered, "answer": answer, "links": links}
+    return response
+
+
+def get_answer_all_protocols(question, request):
+    default_answer = 'I am not sure of this. Please check with the admin!'
+    data_from_db = request.app.database["data"].find()
+    outputs_from_db, questions_from_db = [], []
+    document_embeddings = {}
+    for data in data_from_db:
+        outputs_from_db.extend(data['data'])
+        document_embeddings.update(data['embeddings'])
+
+    protocols_from_db = request.app.database["protocols"].find()
+    for protocol in protocols_from_db:
+        if protocol['questions'] is not None and len(protocol['questions']) > 0:
+            questions_from_db = questions_from_db + protocol['questions']
+
+    document_embeddings_from_db = tuplify_dict_keys(document_embeddings)
+    df_from_db = final_data_for_openai(outputs_from_db)
+
+    question_embedding, tokens = get_embedding(question)
+    question_similarities = sorted([
+        (vector_similarity(question_embedding, prev_question['embedding']), prev_question['answer'], prev_question) for
+        prev_question in questions_from_db
+    ], reverse=True)
+    if len(question_similarities) >= 1 and question_similarities[0][0] > THRESHOLD_FOR_FUZZY:
+        answer = question_similarities[0][1]
+        links = question_similarities[0][2]['links']
+    else:
+        answer, answer_cost, links = answer_query_with_context(question, question_embedding, df_from_db,
+                                                               document_embeddings_from_db, default_answer)
+    question_answered = False if answer == default_answer else True
+    return question_answered, answer, links
+
 # @question_router.post("/{protocol_id}", response_description="Add a new question", status_code=status.HTTP_201_CREATED, response_model=Data)
 # def add_question(request: Request, question: DataUpdate = Body(...)):
 #     question = jsonable_encoder(question)

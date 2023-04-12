@@ -362,7 +362,7 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     if gitbook_link[len(gitbook_link)-1] == "/":
         gitbook_link = gitbook_link[0 : len(gitbook_link)-1]
     inter_str = gitbook_link.replace(https_str, '')
-    base_url = https_str + inter_str.split('/', 1)[0] if len(inter_str.split('/', 1)) > 1  else inter_str
+    base_url = https_str + (inter_str.split('/', 1)[0] if len(inter_str.split('/', 1)) > 1  else inter_str)
     first_url = '/' + inter_str.split('/', 1)[1] if len(inter_str.split('/', 1)) > 1  else ''
     title_stack = get_gitbook_data(base_url, first_url, gitbook_data_type)
     # title_stack = get_gitbook_data(gitbook_link, '', gitbook_data_type)
@@ -513,7 +513,7 @@ def answer_query_with_context(
     answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
 
     links = []
-    if df.loc[chosen_sections_indexes[0]]['link'] == '':
+    if len(chosen_sections_indexes) > 0 and df.loc[chosen_sections_indexes[0]]['link'] == '':
         return response["choices"][0]["text"].strip(" \n"), answer_cost, links
     for section_index in chosen_sections_indexes:
         document_section = df.loc[section_index]

@@ -2,8 +2,11 @@ import requests
 from dotenv import dotenv_values
 import json
 import sys
+import os
 
-config = dotenv_values("../../.env")
+BASEDIR = os.path.abspath(os.path.dirname(__file__))
+BASEDIR = BASEDIR[0:BASEDIR.find('bot_service')] + 'bot_service'
+config = dotenv_values(os.path.join(BASEDIR, '.env'))
 
 
 def get_valid_protocol_ids():

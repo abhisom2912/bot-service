@@ -17,7 +17,7 @@ def get_answer(question, server_id, questioner_id):
     unknown_error_message = 'Unknown error occurred. Please try again or report to admin.'
     query_params = "discord/" +  server_id + "/" + questioner_id + "?question=" + question
     if server_id in list_of_exempted_server_ids:
-        response = requests.get(config['BASE_API_URL'] + "question/masterApi/getAnswerFromAnyProtocol")
+        response = requests.get(config['BASE_API_URL'] + "question/masterApi/getAnswerFromAnyProtocol?question=" + question)
     else:
         response = requests.get(config['BASE_API_URL'] + "question/" + query_params)
 

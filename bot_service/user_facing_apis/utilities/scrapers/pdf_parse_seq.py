@@ -58,7 +58,7 @@ def get_most_used_font_styles(doc):
 
     return para_styles # get styles for most used font by count (paragraph)
 
-def headers_para(doc):
+def headers_para(doc, table_of_contents_pages):
     """Scrapes headers & paragraphs from PDF and return texts with element tags.
     :param doc: PDF document to iterate through
     :type doc: <class 'fitz.fitz.Document'>
@@ -74,6 +74,8 @@ def headers_para(doc):
     header = '-1 start_of_file'
     header_contents[header] = ''
     for page in doc:
+        if page.number + 1 in table_of_contents_pages:
+            continue
         blocks = page.get_text("dict")["blocks"]
         for b in blocks:  # iterate through the text blocks
             if b['type'] == 0:  # this block contains text
@@ -178,17 +180,18 @@ def create_final_output(header_contents):
             output = output + header_contents[key].strip() + '\n'
     return output
 
-def convert_to_md_format(document):
+def convert_to_md_format(document, table_of_contents_pages):
     doc = fitz.open(document)
 
-    header_contents = headers_para(doc)
+    header_contents = headers_para(doc, table_of_contents_pages)
     return create_final_output(header_contents)
 
 def main():
     # print(validate_new_num('3','2.1.1')) Dfyn_V2_Whitepaper-pages-4-15 whitepaper-v3.pdf
-    document = '/Users/abhisheksomani/Downloads/Router_Chain_Whitepaper-pages.pdf'
+    document = '/Users/abhisheksomani/Downloads/code/resources/Router Protocol_1.pdf'
     # -pages-7
-    print(convert_to_md_format(document))
+    table_of_contents_pages = [2, 3]
+    print(convert_to_md_format(document, table_of_contents_pages))
 
 
 if __name__ == '__main__':

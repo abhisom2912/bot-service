@@ -172,7 +172,7 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
         final_header = header
         dir_header = ''
 
-        if doc_type == 'whitepaper':
+        if doc_type == 'pdf':
             content_link = doc_link
             title = protocol_title + " - whitepaper"
         elif doc_type == 'gitbook':
@@ -374,16 +374,16 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     print('Embeddings created, sending data to db...')
     return outputs, document_embeddings, cost_incurred
 
-def get_whitepaper_data(type, document, whitepaper_link, protocol_title):
-    content = convert_to_md_format(document)
-    title_stack = add_data_array(type, content)
-    outputs = create_data_for_docs(protocol_title, title_stack, whitepaper_link, 'whitepaper')
+def get_pdf_whitepaper_data(document, table_of_contents_pages, whitepaper_link, protocol_title):
+    content = convert_to_md_format(document, table_of_contents_pages)
+    title_stack = add_data_array('whitepaper', content)
+    outputs = create_data_for_docs(protocol_title, title_stack, whitepaper_link, 'pdf')
     print('Outputs created for whitepaper data')
     df = final_data_for_openai(outputs)
     print(df.head)
     document_embeddings, cost_incurred = compute_doc_embeddings(df)
     print('Embeddings created, sending data to db...')
-    return outputs, df, document_embeddings, cost_incurred
+    return outputs, document_embeddings, cost_incurred
 
 
 def get_data_from_medium(username, valid_articles_duration_days, protocol_title):

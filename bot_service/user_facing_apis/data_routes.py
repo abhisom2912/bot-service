@@ -7,6 +7,7 @@ from utilities.utility_functions import *
 from models import DataFromUser, DataFromUserUpdate, Data
 import validators
 from datetime import datetime
+import os
 
 data_router = APIRouter()
 question_router = APIRouter()
@@ -15,9 +16,13 @@ EMBEDDING_COST = 0.0004
 COMPLETIONS_COST = 0.03
 THRESHOLD_FOR_FUZZY = 0.95
 
+BASE_DIR= os.path.abspath(os.path.dirname(__file__))
+PDF_DIR = BASE_DIR[0:BASE_DIR.find('bot-service')] + 'resources'
+
 
 # {"gitbook":[{"url":"abc"}, {"url":"xby"}]}
 # {"github":[{"url":"https://github.com/router-protocol/router-chain-docs", "doc_link":"https://devnet-docs.routerprotocol.com/", "directory":"docs"}, {"url":"xby", "doc_link":"abc", "directory":"docs"}]}
+# {"pdf":[{"url":"https://global-uploads.webflow.com/61d1382fe0e915f2953f9500/63ecc619fa7285237ea184f3_Router%20Chain%20Whitepaper.pdf", "table_of_contents_pages":[2,3]}]}
 def fetch_outputs_and_embeddings(protocol, data_type, datas):
     outputs = []
     document_embeddings = {}
@@ -26,12 +31,13 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
         for data in datas:
             if validators.url(data['url']):
                 gitbook_data_type = 'whitepaper' if 'gitbook_data_type' not in data else data['gitbook_data_type']
+                url = data['url'] if data['url'][-1] != '/' else data['url'][:-1]
                 if len(outputs) == 0:
-                    outputs, document_embeddings, cost_incurred = get_data_from_gitbook(gitbook_data_type, data['url'],
+                    outputs, document_embeddings, cost_incurred = get_data_from_gitbook(gitbook_data_type, url,
                                                                                         protocol['protocol_name'])
                 else:
                     gitbook_outputs, gitbook_document_embeddings, cost_incurred = get_data_from_gitbook(
-                        gitbook_data_type, data['url'], protocol['protocol_name'])
+                        gitbook_data_type, url, protocol['protocol_name'])
                     # append the new output to the outputs in the database
                     outputs.extend(gitbook_outputs)
                     # append the new embedding to the embedding in the database
@@ -43,15 +49,17 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
     if data_type == 'github':
         for data in datas:
             if validators.url(data['url']) and 'github' in data['url']:
-                directory = '' if 'directory' not in data else data['directory']
+                url = data['url'] if data['url'][-1] != '/' else data['url'][:-1]
+                directory = '' if 'directory' not in data else \
+                    data['directory'] if data['directory'][-1] == '/' else data['directory'] + '/'
                 if len(outputs) == 0:
                     # github_directory - the specific folder that we need to read within the github repo, if empty then we will read all
                     outputs, document_embeddings, cost_incurred = read_from_github(protocol['protocol_name'],
-                                                                                   data['url'], data['doc_link'],
+                                                                                   url, data['doc_link'],
                                                                                    directory)
                 else:
                     github_outputs, github_document_embeddings, cost_incurred = read_from_github(
-                        protocol['protocol_name'], data['url'], data['doc_link'], directory)
+                        protocol['protocol_name'], url, data['doc_link'], directory)
                     # append the new output to the outputs in the database
                     outputs.extend(github_outputs)
                     # append the new embedding to the embedding in the database
@@ -79,6 +87,34 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
                 cost += cost_incurred
             else:
                 print("Empty or invalid Medium details")
+
+    if data_type == 'pdf':
+        file_number = 1
+        for data in datas:
+            if validators.url(data['url']):
+                response = requests.get(data['url'])
+                if response.status_code != 200:
+                    raise HTTPException(status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                                        detail=f"Unable to download/read the content from the link.")
+                file_name = PDF_DIR + '/' + protocol['protocol_name'] + '_' + str(file_number) + '.pdf'
+                with open(file_name, 'wb') as f:
+                    f.write(response.content)
+
+                if len(outputs) == 0:
+                    print(data['table_of_contents_pages'])
+                    outputs, document_embeddings, cost_incurred = get_pdf_whitepaper_data(file_name, data['table_of_contents_pages'], data['url'],
+                                                                                        protocol['protocol_name'])
+                else:
+                    gitbook_outputs, gitbook_document_embeddings, cost_incurred = get_pdf_whitepaper_data(
+                        file_name, data['table_of_contents_pages'], data['url'], protocol['protocol_name'])
+                    # append the new output to the outputs in the database
+                    outputs.extend(gitbook_outputs)
+                    # append the new embedding to the embedding in the database
+                    document_embeddings.update(gitbook_document_embeddings)
+                cost += cost_incurred
+                file_number = file_number + 1
+            else:
+                print("Empty or invalid pdf link")
     return outputs, document_embeddings, cost
 
 
@@ -152,10 +188,13 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
         )
         if len(outputs) == 0:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                                detail=f"A valid Gitbook or GitHub link has not been provided")
+                                detail=f"A valid Gitbook/ GitHub/ PDF link has not been provided")
         else:
             data_from_db = request.app.database["data"].find_one(
                 {"$and": [{"protocol_id": protocol_id}, {"data_type": key}]})
+            if data_from_db is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                    detail=f"Data for {key} doesn't exist, use post call")
             cost_from_db = data_from_db['embeddings_cost']
             if data.append:
                 outputs_from_db = data_from_db['data']

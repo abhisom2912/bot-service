@@ -14,7 +14,7 @@ question_router = APIRouter()
 
 EMBEDDING_COST = 0.0004
 COMPLETIONS_COST = 0.03
-THRESHOLD_FOR_FUZZY = 0.95
+THRESHOLD_FOR_FUZZY = 0.98
 
 BASE_DIR= os.path.abspath(os.path.dirname(__file__))
 PDF_DIR = BASE_DIR[0:BASE_DIR.find('bot-service')] + 'resources'

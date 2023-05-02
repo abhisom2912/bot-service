@@ -117,7 +117,7 @@ def cleanup_data(s):
 
 def read_docs():
     g = Github(config['GITHUB_ACCESS_TOKEN'])
-    repo = g.get_repo('abhisom2912/nft-drop-starter-project')
+    repo = g.get_repo('ensdomains/ens-support-docs')
     title_stack=[]
     contents = repo.get_contents("")
     while contents:
@@ -607,7 +607,7 @@ def add_data_from_sheet(bot_id, sheet_id, sheet_name):
 
 
 def main():
-    # outputs, df, document_embeddings = initialize()
+    outputs, df, document_embeddings = initialize()
     # response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
 
     # p = TelegramBot(df, document_embeddings)
@@ -623,7 +623,7 @@ def main():
     p = DiscordBot(df_from_database, document_embeddings_from_database)
     p.start()
     # response_after_deleting_data = delete_data(bot_id, "Router Protocol - Voyager", "What is Voyager?")
-    
+
 
 
 if __name__ == '__main__':

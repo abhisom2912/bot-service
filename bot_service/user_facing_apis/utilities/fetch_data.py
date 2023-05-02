@@ -25,7 +25,7 @@ else:
     ssl._create_default_https_context = _create_unverified_https_context
 
 nltk.download('punkt')
-config = dotenv_values("../.env") 
+config = dotenv_values("../.env")
 
 openai.api_key = config['OPENAI_API_KEY']
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
@@ -71,6 +71,8 @@ def remove_unwanted_char(s):
     code_separator = "```"
     index_array = find_all(s, code_separator)
     i = 0
+    if len(index_array) % 2 == 1:
+        index_array.append(len(s))
     while i < len(index_array):
         start_index = index_array[i]
         i = i+1
@@ -128,7 +130,7 @@ def read_docs(github_repo, github_directory):
         if file_content.type == "dir":
             contents.extend(repo.get_contents(file_content.path))
         else:
-            if (github_directory != '' and file_content.path.find(github_directory) == -1) or file_content.path.find('orchestrator') == -1:  ## remove orchestrator line later
+            if (github_directory != '' and file_content.path.find(github_directory) == -1):  ## remove orchestrator line later
                 continue
             if file_content.name.endswith('md') or file_content.name.endswith('mdx'):
                 file_contents = repo.get_contents(file_content.path)

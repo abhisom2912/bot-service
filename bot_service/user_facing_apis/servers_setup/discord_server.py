@@ -12,7 +12,7 @@ list_of_exempted_server_ids = config['EXEMPTED_SERVER_IDS'].split(',') if \
 
 def get_answer(question, server_id, questioner_id):
     rate_limit_error_message = 'You have already asked the maximum number of questions for the day on this server. Please contact admin for further questions or you can increase your quota by visiting our website.'
-    usage_exceeded_message = 'Usage has exceeded the credits allocated to Scarlett for this protocol . Please contact admin to top-up Scarlett for continuing the services.'
+    usage_exceeded_message = 'Usage has exceeded the credits allocated to Scarlett for this protocol. Please contact admin to top-up Scarlett for continuing the services.'
     protocol_not_found_message = 'We couldn\'t find any active protocol docs for this server. Please contact admin to onboard Scarlett on this server.'
     unknown_error_message = 'Unknown error occurred. Please try again or report to admin.'
     query_params = "discord/" +  server_id + "/" + questioner_id + "?question=" + question

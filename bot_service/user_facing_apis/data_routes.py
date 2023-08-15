@@ -20,9 +20,6 @@ BASE_DIR= os.path.abspath(os.path.dirname(__file__))
 PDF_DIR = BASE_DIR[0:BASE_DIR.find('bot-service')] + 'resources'
 
 
-# {"gitbook":[{"url":"abc"}, {"url":"xby"}]}
-# {"github":[{"url":"https://github.com/router-protocol/router-chain-docs", "doc_link":"https://devnet-docs.routerprotocol.com/", "directory":"docs"}, {"url":"xby", "doc_link":"abc", "directory":"docs"}]}
-# {"pdf":[{"url":"https://global-uploads.webflow.com/61d1382fe0e915f2953f9500/63ecc619fa7285237ea184f3_Router%20Chain%20Whitepaper.pdf", "table_of_contents_pages":[2,3]}]}
 def fetch_outputs_and_embeddings(protocol, data_type, datas):
     outputs = []
     document_embeddings = {}
@@ -492,61 +489,3 @@ def get_answer_all_protocols(question, request):
                                                                document_embeddings_from_db, default_answer)
     question_answered = False if answer == default_answer else True
     return question_answered, answer, links
-
-# @question_router.post("/{protocol_id}", response_description="Add a new question", status_code=status.HTTP_201_CREATED, response_model=Data)
-# def add_question(request: Request, question: DataUpdate = Body(...)):
-#     question = jsonable_encoder(question)
-#     new_question = request.app.database["data"].insert_one(question)
-#     created_question = request.app.database["questions"].find_one(
-#         {"_id": new_question.inserted_id}
-#     )
-
-#     return created_question
-
-# @question_router.get("/", response_description="List all questions", response_model=list[Question])
-# def list_questions(request: Request):
-#     questions = list(request.app.database["questions"].find(limit=100))
-#     return questions
-
-
-# def add_data(request: Request, data: Data = Body(...)):
-#     data = jsonable_encoder(data)
-#     # if (protocol := request.app.database["protocols"].find_one({"_id": data['protocol_id']})) is None:
-#     #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No protocol with ID {data['protocol_id']} found")
-#     new_data = request.app.database["data"].insert_one(data)
-#     created_data = request.app.database["data"].find_one(
-#         {"_id": new_data.inserted_id}
-#     )
-#     return created_data
-
-# @data_router.post("/curated_data", response_description="Add data for a protocol", status_code=status.HTTP_201_CREATED, response_model=Data)
-# def add_data(request: Request, data: Data = Body(...)):
-#     # make it so that users cannot access this, only for internal calls
-#     data = jsonable_encoder(data)
-#     if (protocol := request.app.database["protocols"].find_one({"_id": data['protocol_id']})) is None:
-#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No protocol with ID {data['protocol_id']} found")
-#     new_data = request.app.database["data"].insert_one(data)
-#     created_data = request.app.database["data"].find_one(
-#         {"_id": new_data.inserted_id}
-#     )
-
-#     return created_data
-
-
-# @data_router.put("/{id}", response_description="Update data", response_model=Data)
-# def update_data(id: str, request: Request, data: DataUpdate = Body(...)):
-#     data = {k: v for k, v in data.dict().items() if v is not None}
-#     if len(data) >= 1:
-#         update_result = request.app.database["data"].update_one(
-#             {"_id": id}, {"$set": data}
-#         )
-
-#         if update_result.modified_count == 0:
-#             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Data with ID {id} not found")
-
-#     if (
-#         existing_data := request.app.database["data"].find_one({"_id": id})
-#     ) is not None:
-#         return existing_data
-
-#     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Data with ID {id} not found")

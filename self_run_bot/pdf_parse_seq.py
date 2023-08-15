@@ -182,13 +182,3 @@ def convert_to_md_format(document):
     doc = fitz.open(document)
     header_contents = headers_para(doc)
     return create_final_output(header_contents)
-
-def main():
-    # print(validate_new_num('3','2.1.1')) Dfyn_V2_Whitepaper-pages-4-15 whitepaper-v3.pdf
-    document = '/Users/abhisheksomani/Downloads/Router_Chain_Whitepaper-pages.pdf'
-    # -pages-7
-    print(convert_to_md_format(document))
-
-
-if __name__ == '__main__':
-    main()

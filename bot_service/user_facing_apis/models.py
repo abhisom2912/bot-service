@@ -2,6 +2,7 @@ import uuid
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
+
 class ContactUs(BaseModel):
     contactus_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     name: str = Field(default="Name unknown")
@@ -12,7 +13,7 @@ class ContactUs(BaseModel):
         allow_population_by_field_name = True
         schema_extra = {
             "example": {
-                "contactus_id": "066de609-b04a-4b30-b46c-32537c7f1f6e",           
+                "contactus_id": "066de609-b04a-4b30-b46c-32537c7f1f6e",
                 "name": "John Doe",
                 "email": "xyz@domain.com",
                 "message": "I want to integrate scarlett"
@@ -98,6 +99,7 @@ class QuestionerUpdate(BaseModel):
             }
         }
 
+
 class Protocol(BaseModel):
     protocol_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     user_id: str = Field(...)
@@ -109,11 +111,13 @@ class Protocol(BaseModel):
     doc_links: dict or None = Field(default={})
     credits: float = Field(default=0)
     usage: float = Field(default=0)
-    default_answer: str = Field(default="I don't know. Please check with admin.")
+    default_answer: str = Field(
+        default="I don't know. Please check with admin.")
     questions: list = Field(default={})
+    # moving irrelevant/past answered questions to archvied questions so that we don't use them to answer
     archived_questions: list = Field(default={})
     active: bool = Field(default=True)
-    mod_responses: list = Field(default=True)
+    mod_responses: list = Field(default={})
 
     class Config:
         allow_population_by_field_name = True
@@ -272,7 +276,12 @@ class DataFromUser(BaseModel):
         schema_extra = {
             "example": {
                 "data_id": "083jj669-s05c-4v63-b46c-98564c7c2c6e",
-                "data": {},
+                "data": {
+                    {"gitbook": [{"url": ""}, {"url": ""}]}, ## for multiple gitbook urls
+                    {"github": [{"url": "https://github.com/router-protocol/router-chain-docs", "doc_link": "https://docs.routerprotocol.com/",
+                                 "directory": "docs"}, {"url": "", "doc_link": "", "directory": ""}]},
+                    {"pdf": [{"url": "https://routerprotocol.com/router-chain-whitepaper.pdf", "table_of_contents_pages": [2, 3]}]} # to skip table of content pages, you can also include other pages that you want to skip
+                },
             }
         }
 
@@ -289,6 +298,7 @@ class DataFromUserUpdate(BaseModel):
                 "append": True,
             }
         }
+
 
 class Payment(BaseModel):
     payment_id: str = Field(default_factory=uuid.uuid4, alias="_id")

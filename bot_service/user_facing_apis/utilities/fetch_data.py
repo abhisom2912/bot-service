@@ -52,7 +52,6 @@ COMPLETIONS_API_PARAMS = {
 
 # Functions to fetch data
 
-
 def find_all(s, ch):
     previous_ind = 0
     array = []

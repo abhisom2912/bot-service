@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from dotenv import dotenv_values
 from pymongo import MongoClient
-from routes import document_router, question_router
+from routes import document_router
 
 config = dotenv_values("../.env")
 
@@ -18,4 +18,3 @@ def shutdown_db_client():
     app.mongodb_client.close()
 
 app.include_router(document_router, tags=["documents"], prefix="/document")
-app.include_router(question_router, tags=["questions"], prefix="/question")

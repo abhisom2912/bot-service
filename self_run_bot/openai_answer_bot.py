@@ -18,6 +18,7 @@ import ssl
 
 from pdf_parse_seq import *
 from gitbook_scraper import *
+from medium_parser import *
 
 try:
     _create_unverified_https_context = ssl._create_unverified_context
@@ -186,6 +187,9 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
             while element_len < len(dir_elements) - 1:
                 dir_header += dir_elements[element_len].replace('-', ' ') + ': '
                 element_len += 1
+        elif doc_type == 'medium':
+            content_link = dir
+            title = protocol_title + " - articles"
 
         else:
             element_len = 1
@@ -437,6 +441,16 @@ def get_data_from_gitbook(gitbook_link, protocol_title):
     print('Embeddings created, sending data to db...')
     return outputs, df, document_embeddings
 
+def get_data_from_medium(username, valid_articles_duration_days, protocol_title):
+    title_stack = get_medium_data(username, valid_articles_duration_days)
+    outputs = create_data_for_docs(protocol_title, title_stack, '', 'medium')
+    print('Outputs created for gitbook data')
+    df = final_data_for_openai(outputs)
+    print(df.head)
+    document_embeddings = compute_doc_embeddings(df)
+    print('Embeddings created, sending data to db...')
+    return outputs, df, document_embeddings
+
 def calculate_new_output(title, heading, content):
     nheadings, ncontents, ntitles = [], [], []
     outputs = []
@@ -638,6 +652,14 @@ def main():
                 outputs, df, document_embeddings = read_from_github(protocol_title, github_repo, arguments['github_doc_link'])
                 if len(outputs) > 0:
                     send_to_db(protocol_title, 'github', outputs, document_embeddings)
+
+        if arguments.get('read_from_medium') is not None and arguments['read_from_medium'].lower() == 'true':
+            duration = 10000 if arguments.get('valid_articles_duration_days') is None else arguments.get('valid_articles_duration_days')
+            if arguments.get('medium_username') is None:
+                raise Exception("Medium username not provided, while read from Medium is true")
+            outputs, df, document_embeddings = get_data_from_medium(arguments.get('medium_username'), duration, protocol_title)
+            if len(outputs) > 0:
+                send_to_db(protocol_title, 'github', outputs, document_embeddings)
 
     outputs_from_database, document_embeddings_from_database = retrieve_from_db()
     df_from_database = final_data_for_openai(outputs_from_database)

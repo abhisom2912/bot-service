@@ -28,7 +28,7 @@ else:
     ssl._create_default_https_context = _create_unverified_https_context
 
 nltk.download('punkt')
-config = dotenv_values(".env") 
+config = dotenv_values("../.env")
 
 openai.api_key = config['OPENAI_API_KEY']
 
@@ -608,7 +608,14 @@ def add_data_from_sheet(bot_id, sheet_id, sheet_name):
 
 def main():
     outputs, df, document_embeddings = initialize()
-    response_after_adding_data = add_data_from_sheet(bot_id, SHEET_ID, SHEET_NAME)
+    response_after_sending_data = send_to_db(bot_id, bot_description, outputs, document_embeddings)
+
+    p = TelegramBot(df, document_embeddings)
+    p.start()
+    
+    response_after_adding_data = add_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "For cross-chain instruction transfers that do not require any logic in the middle or do not need any accounting layer, Router's CrossTalk framework is the best option. It is an easy-to-implement cross-chain smart contract library that does not require you to deploy any new contract - only a few lines of code need to be included, and your single-chain contract will become a cross-chain contract. CrossTalk's ability to transfer multiple contract-level instructions in a single cross-chain call makes it a very powerful tool.")
+    response_after_updating_data = update_data(bot_id, "Router Protocol - CrossTalk", "What is CrossTalk?", "CrossTalk is a cross-chain messaging framework on Router Protocol.")
+    response_after_adding_data_from_sheet = add_data_from_sheet(bot_id, SHEET_ID, SHEET_NAME)
     outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
     df_from_database = final_data_for_openai(outputs_from_database)
     p = DiscordBot(df_from_database, document_embeddings_from_database)

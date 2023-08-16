@@ -32,7 +32,7 @@ else:
     ssl._create_default_https_context = _create_unverified_https_context
 
 nltk.download('punkt')
-config = dotenv_values(".env") 
+config = dotenv_values("../.env")
 
 openai.api_key = config['OPENAI_API_KEY']
 

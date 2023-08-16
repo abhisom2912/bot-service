@@ -50,6 +50,7 @@ COMPLETIONS_API_PARAMS = {
     "model": COMPLETIONS_MODEL,
 }
 
+
 def find_all(s, ch):
     previous_ind = 0
     array = []
@@ -107,16 +108,22 @@ def cleanup_data(s):
     s = s.replace('<summary><b>', hash_string)
     return s
 
+
 def clean_content(content):
     s1 = '<Section'
     s2 = '</Section>'
     remove_content = find_between(content, s1, s2)
-    content = content.replace(remove_content,'').replace(s1, '').replace(s2, '')
+    content = content.replace(remove_content, '').replace(
+        s1, '').replace(s2, '')
     return content
+
 
 def read_docs(github_repo):
     doc_file_path = 'docs/'
+
+    # if the repository is private, you need access token from an account that has read access to the repository
     g = Github(config['GITHUB_ACCESS_TOKEN'])
+    
     repo = g.get_repo(github_repo)
     title_stack = []
     contents = repo.get_contents("")
@@ -129,8 +136,9 @@ def read_docs(github_repo):
         if file_content.type == "dir":
             contents.extend(repo.get_contents(file_content.path))
         else:
-            if file_content.path.find(doc_file_path) == -1 or file_content.path.find('crosstalk') == -1:  ## remove this line later
-                continue  ## remove this line later
+            # remove this line later
+            if file_content.path.find(doc_file_path) == -1 or file_content.path.find('crosstalk') == -1:
+                continue  # remove this line later
             if file_content.name.endswith('md') or file_content.name.endswith('mdx'):
                 file_contents = repo.get_contents(file_content.path)
                 title = pp.AtLineStart(pp.Word("#")) + pp.rest_of_line
@@ -140,15 +148,19 @@ def read_docs(github_repo):
                 title_stack.append([0, 'start_of_file'])
                 if sample.split('\n')[0] == '---':
                     title_stack[-1].append('')
-                    title_stack[-1].append(file_content.path.replace(doc_file_path, ''))
-                    title_stack.append([1, sample.split('\n')[1].split(':')[1].lstrip()])
+                    title_stack[-1].append(
+                        file_content.path.replace(doc_file_path, ''))
+                    title_stack.append(
+                        [1, sample.split('\n')[1].split(':')[1].lstrip()])
                     sample = sample.split('---')[2]
 
                 last_end = 0
                 for t, start, end in title.scan_string(sample):
                     # save content since last title in the last item in title_stack
-                    title_stack[-1].append(clean_content(sample[last_end:start].lstrip("\n")))
-                    title_stack[-1].append(file_content.path.replace(doc_file_path, ''))
+                    title_stack[-1].append(clean_content(
+                        sample[last_end:start].lstrip("\n")))
+                    title_stack[-1].append(
+                        file_content.path.replace(doc_file_path, ''))
 
                     # add a new entry to title_stack
                     marker, title_content = t
@@ -171,21 +183,21 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
     outputs = []
     max_len = 1500
 
-
     for level, header, content, dir in title_stack:
         final_header = header
         dir_header = ''
 
-        if doc_type == 'whitepaper':
+        if doc_type == 'pdf':
             content_link = doc_link
-            title = protocol_title + " - whitepaper"
+            title = protocol_title + " - pdf"
         elif doc_type == 'gitbook':
-            content_link =  dir
-            title = protocol_title + " - whitepaper"
+            content_link = dir
+            title = protocol_title + " - pdf"
             dir_elements = dir.replace('https://', '').split('/')
             element_len = 1
             while element_len < len(dir_elements) - 1:
-                dir_header += dir_elements[element_len].replace('-', ' ') + ': '
+                dir_header += dir_elements[element_len].replace(
+                    '-', ' ') + ': '
                 element_len += 1
         elif doc_type == 'medium':
             content_link = dir
@@ -206,7 +218,8 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
             element_len = 1
             while element_len < len(dir_elements) - sub + 1:
                 if dir_elements[element_len].find('.md'):
-                    link = dir_elements[element_len].replace('.mdx', '').replace('.md', '')
+                    link = dir_elements[element_len].replace(
+                        '.mdx', '').replace('.md', '')
                 content_link = content_link + '/' + link
                 element_len = element_len + 1
 
@@ -237,7 +250,6 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
             ntitles.append(title)
             nlinks.append(content_link)
 
-
     ncontent_ntokens = [
         count_tokens(c)
         + 3
@@ -249,15 +261,18 @@ def create_data_for_docs(protocol_title, title_stack, doc_link, doc_type):
         if (t < max_len and t > min_token_limit):
             outputs += [(title, h, c, t, l)]
         elif (t >= max_len):
-            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)), l)]
+            outputs += [(title, h, reduce_long(c, max_len),
+                         count_tokens(reduce_long(c, max_len)), l)]
     return outputs
 
 
 def final_data_for_openai(outputs):
     res = []
     res += outputs
-    df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens", "link"])
-    # df = df[df.tokens>10] # was initially 40 (need to ask Abhishek why)
+    df = pd.DataFrame(
+        res, columns=["title", "heading", "content", "tokens", "link"])
+    # to ensure really small and insignificant data doesn't get indexed
+    df = df[df.tokens > 10]
     df = df.drop_duplicates(['title', 'heading'])
     df = df.reset_index().drop('index', axis=1)  # reset index
     df = df.set_index(["title", "heading"])
@@ -326,7 +341,8 @@ def load_embeddings(fname: str) -> dict[tuple[str, str], list[float]]:
     """
 
     df = pd.read_csv(fname, header=0)
-    max_dim = max([int(c) for c in df.columns if c != "title" and c != "heading"])
+    max_dim = max([int(c)
+                  for c in df.columns if c != "title" and c != "heading"])
     return {
         (r.title, r.heading): [r[str(i)] for i in range(max_dim + 1)] for _, r in df.iterrows()
     }
@@ -342,7 +358,7 @@ def vector_similarity(x: list[float], y: list[float]) -> float:
 
 
 def order_document_sections_by_query_similarity(query: str, contexts: dict[tuple[str, str], np.array]) -> list[
-    tuple[float, tuple[str, str]]]:
+        tuple[float, tuple[str, str]]]:
     """
     Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
     to find the most relevant sections.
@@ -360,9 +376,10 @@ def order_document_sections_by_query_similarity(query: str, contexts: dict[tuple
 
 def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame):
     """
-    Fetch relevant
+    Fetch relevant parts of the data
     """
-    most_relevant_document_sections = order_document_sections_by_query_similarity(question, context_embeddings)
+    most_relevant_document_sections = order_document_sections_by_query_similarity(
+        question, context_embeddings)
 
     chosen_sections = []
     chosen_sections_len = 0
@@ -377,7 +394,8 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame):
         if chosen_sections_len > MAX_SECTION_LEN:
             break
 
-        chosen_sections.append(SEPARATOR + document_section.content.replace("\n", " "))
+        chosen_sections.append(
+            SEPARATOR + document_section.content.replace("\n", " "))
         chosen_sections_indexes_string.append(str(section_index))
         chosen_sections_indexes.append(section_index)
 
@@ -385,7 +403,7 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame):
     print("Selected ", len(chosen_sections), " document sections:")
     print("\n".join(chosen_sections_indexes_string))
 
-    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "Sorry, I am not sure of this. Please contact one of the admins."\n\nContext:\n"""
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "Sorry, I do not know the answer to this query. Please contact one of the admins."\n\nContext:\n"""
 
     return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:", chosen_sections_indexes
 
@@ -423,7 +441,8 @@ def answer_query_with_context(
 
 def read_from_github(protocol_title, github_repo, github_doc_link):
     title_stack = read_docs(github_repo)
-    outputs = create_data_for_docs(protocol_title, title_stack, github_doc_link, 'github')
+    outputs = create_data_for_docs(
+        protocol_title, title_stack, github_doc_link, 'github')
     df = final_data_for_openai(outputs)
     print(df.head)
     document_embeddings = compute_doc_embeddings(df)
@@ -441,6 +460,7 @@ def get_data_from_gitbook(gitbook_link, protocol_title):
     print('Embeddings created, sending data to db...')
     return outputs, df, document_embeddings
 
+
 def get_data_from_medium(username, valid_articles_duration_days, protocol_title):
     title_stack = get_medium_data(username, valid_articles_duration_days)
     outputs = create_data_for_docs(protocol_title, title_stack, '', 'medium')
@@ -450,6 +470,7 @@ def get_data_from_medium(username, valid_articles_duration_days, protocol_title)
     document_embeddings = compute_doc_embeddings(df)
     print('Embeddings created, sending data to db...')
     return outputs, df, document_embeddings
+
 
 def calculate_new_output(title, heading, content):
     nheadings, ncontents, ntitles = [], [], []
@@ -470,9 +491,12 @@ def calculate_new_output(title, heading, content):
         if (t < max_len and t > min_token_limit):
             outputs += [(title, h, c, t)]
         elif (t >= max_len):
-            outputs += [(title, h, reduce_long(c, max_len), count_tokens(reduce_long(c, max_len)))]
+            outputs += [(title, h, reduce_long(c, max_len),
+                         count_tokens(reduce_long(c, max_len)))]
 
     return outputs
+
+# running a Discord bot that answers any questions asked to it (based on the uploaded data)
 
 
 class DiscordBot(multiprocessing.Process):
@@ -494,23 +518,28 @@ class DiscordBot(multiprocessing.Process):
         async def on_message(message):
             if message.author == client.user:
                 return
-
-            if message.content.lower().find('@1064872402003169312'.lower()) != -1 or message.clean_content.lower().find('@jarvis') != -1:
-                question = message.content.replace('<@1064872402003169312> ', '')
+            
+            if message.content.lower().find(config['DISCORD_BOT_USER_ID'].lower()) != -1 or message.clean_content.lower().find('@scarlett') != -1:
+                question = message.content.replace(
+                    '<' + config['DISCORD_BOT_USER_ID'] + '> ', '')  # replace @scarlett with the Discord ID/name of your bot
+                # sync_to_async enables execution of parallel bots without any issues
                 answer, links = await sync_to_async(answer_query_with_context)(question, self.df, self.document_embeddings)
                 # answer, links = answer_query_with_context(question, self.df, self.document_embeddings)
                 link_number = 1
                 link_text = ''
                 for link in links:
                     if link_number == 1:
-                        link_text = ' [Link' + str(link_number) + '](' + link + ')'
+                        link_text = ' [Link' + \
+                            str(link_number) + '](' + link + ')'
                     else:
-                        link_text += ', [Link' + str(link_number) + '](' + link + ')'
+                        link_text += ', [Link' + \
+                            str(link_number) + '](' + link + ')'
                     link_number += 1
                 embedVar = discord.Embed(description=answer)
-                if link_text != '' and answer.find('Sorry, I am not sure of this. Please contact one of the admins') == -1:
-                    embedVar.add_field(name="Relevant links", value="To read more, check out the following links -" + link_text, inline=False)
-                await message.reply(embed = embedVar)
+                if link_text != '' and answer.find('Sorry, I do not know the answer to this query. Please contact one of the admins') == -1:
+                    embedVar.add_field(
+                        name="Relevant links", value="To read more, check out the following links -" + link_text, inline=False)  # adding the link to the source from which the answer has been generated
+                await message.reply(embed=embedVar)
 
         client.run(config['DISCORD_TOKEN'])
 
@@ -525,11 +554,15 @@ def tuplify_dict_keys(string):
     return {tuple(json.loads(k)): v for k, v in mapping.items()}
 
 
+# adding data to the database
 def send_to_db(protocol_title, doc_type, outputs, document_embeddings):
     data_to_post = {"protocol_title": protocol_title, "document_type": doc_type, "data": outputs,
                     "embeddings": untuplify_dict_keys(document_embeddings)}
-    response = requests.post(config['BASE_API_URL'] + "document/", json=data_to_post)
+    response = requests.post(
+        config['BASE_API_URL'] + "document/", json=data_to_post)
     return response
+
+# fetching outputs and embeddings from the database
 
 
 def retrieve_from_db():
@@ -543,9 +576,12 @@ def retrieve_from_db():
     document_embeddings = tuplify_dict_keys(document_embeddings)
     return outputs, document_embeddings
 
+# deleting data from the database
+
 
 def delete_data_in_db(protocol_title, _type):
-    requests.delete(config['BASE_API_URL'] + "document/" + protocol_title + "/" + _type)
+    requests.delete(config['BASE_API_URL'] +
+                    "document/" + protocol_title + "/" + _type)
 
 
 def add_data_array(file_path, content):
@@ -577,11 +613,15 @@ def add_data_array(file_path, content):
     return title_stack
 
 
-def get_whitepaper_data(protocol_title, type, document, whitepaper_link):
+def get_pdf_data(protocol_title, type, document, pdf_link):
+
+    # calling this function (from the pdf_parse_seq.py file) to convert PDF document into MD format
     content = convert_to_md_format(document)
+
     title_stack = add_data_array(type, content)
-    outputs = create_data_for_docs(protocol_title, title_stack, whitepaper_link, 'whitepaper')
-    print('Outputs created for whitepaper data')
+    outputs = create_data_for_docs(
+        protocol_title, title_stack, pdf_link, 'pdf')
+    print('Outputs created for pdf data')
     df = final_data_for_openai(outputs)
     print(df.head)
     document_embeddings = compute_doc_embeddings(df)
@@ -599,67 +639,83 @@ def read_command_line_params():
 
 
 def main():
-    # Parameters for the command line
-    # data_id - bot id for which the data needs to be uploaded
-    # reset_bot | first_start - in case you want to rerun the initial data upload in the db
-    # protocol_title - protocol name
-    # read_from_github - true/false based on if data needs to be read by github
-    # github_repo - mandatory field if read_from_github is true
-    # github_doc_link - base link for github
-    # read_from_whitepaper - true/false based on if data needs to be read from whitepaper
-    # whitepaper_path - mandatory field if read_from_whitepaper is true
+    """ Parameters to provide from the command line
+    reset_bot | first_start : if you're uploading the data for the first time or if you want upload entirely new data and forget old data
+    protocol_title (string) : name of your product/protocol/company
+    read_from_github (boolean) : true if data needs to be read from Github, else false
+    github_repo (string) : link to your Github repo containing the docs, mandatory if read_from_github is true (for eg. https://github.com/router-protocol/router-chain-docs)
+    github_doc_link (string) : base link for your Github docs (i.e. link with the path from which the docs start, for eg. https://github.com/router-protocol/router-chain-docs/docs)
+    read_from_pdf : true if data needs to be read from a PDF document, otherwise false
+    pdf_path : link to the PDF, mandatory if read_from_pdf is true
+    """
     arguments = read_command_line_params()
 
+    # if the user is uploading data for the first time or wants to reupload the data from scratch
     if (arguments.get('reset_bot') is not None and arguments['reset_bot'].lower() == 'true') or (
             arguments.get('first_start') is not None and
             arguments['first_start'].lower() == 'true'):
 
         if arguments.get('protocol_title') is None:
-            raise Exception("Please provide protocol name and document type for adding")
+            raise Exception("Please provide the protocol title")
 
         protocol_title = arguments['protocol_title'].lower()
-        if arguments.get('read_from_whitepaper') is not None and arguments['read_from_whitepaper'].lower() == 'true':
-            delete_data_in_db(protocol_title, 'whitepaper')
+        if arguments.get('read_from_pdf') is not None and arguments['read_from_pdf'].lower() == 'true':
+            # deleting data uploaded from the existing PDF doc (if it exists)
+            delete_data_in_db(protocol_title, 'pdf')
             try:
-                whitepaper_path = arguments['whitepaper_path']
+                pdf_path = arguments['pdf_path']
             except KeyError:
-                raise Exception("Whitepaper path not provided, while read from whitepaper is true")
+                raise Exception(
+                    "PDF path not provided, while read_from_pdf is true")
 
-            whitepaper_link = ''
-            if arguments.get('whitepaper_link') is not None:
-                whitepaper_link = arguments['whitepaper_link']
-            outputs, df, document_embeddings = get_whitepaper_data(protocol_title, 'Whitepaper', whitepaper_path, whitepaper_link)
+            pdf_link = ''
+            if arguments.get('pdf_link') is not None:
+                pdf_link = arguments['pdf_link']
+            outputs, df, document_embeddings = get_pdf_data(
+                protocol_title, 'pdf', pdf_path, pdf_link)  # scraping data from the PDF document
             if len(outputs) > 0:
-                send_to_db(protocol_title, 'whitepaper', outputs, document_embeddings)
+                # sending the outputs and document_embeddings to the db
+                send_to_db(protocol_title, 'pdf', outputs, document_embeddings)
 
         if arguments.get('read_from_gitbook_link') is not None and arguments['read_from_gitbook_link'].lower() == 'true':
             try:
                 gitbook_link = arguments['gitbook_link']
             except KeyError:
-                raise Exception("Gitbook link not provided, while read from gitbook is true")
-            outputs, df, document_embeddings = get_data_from_gitbook(gitbook_link, protocol_title)
+                raise Exception(
+                    "Gitbook docs link not provided, while read_from_gitbook is true")
+            outputs, df, document_embeddings = get_data_from_gitbook(
+                gitbook_link, protocol_title)
             if len(outputs) > 0:
-                send_to_db(protocol_title, 'gitbook', outputs, document_embeddings)
+                send_to_db(protocol_title, 'gitbook',
+                           outputs, document_embeddings)
 
         if arguments.get('read_from_github') is not None and arguments['read_from_github'].lower() == 'true':
             delete_data_in_db(protocol_title, 'github')
             if arguments.get('github_repo') is None:
-                raise Exception("Github link not provided, while read from github is true")
+                raise Exception(
+                    "Github link not provided, while read from github is true")
             elif arguments.get('github_doc_link') is None:
-                raise Exception("Github doc link not provided, while read from github is true")
+                raise Exception(
+                    "Github doc link not provided, while read from github is true")
             else:
                 github_repo = arguments['github_repo']
-                outputs, df, document_embeddings = read_from_github(protocol_title, github_repo, arguments['github_doc_link'])
+                outputs, df, document_embeddings = read_from_github(
+                    protocol_title, github_repo, arguments['github_doc_link'])
                 if len(outputs) > 0:
-                    send_to_db(protocol_title, 'github', outputs, document_embeddings)
+                    send_to_db(protocol_title, 'github',
+                               outputs, document_embeddings)
 
         if arguments.get('read_from_medium') is not None and arguments['read_from_medium'].lower() == 'true':
-            duration = 10000 if arguments.get('valid_articles_duration_days') is None else arguments.get('valid_articles_duration_days')
+            duration = 10000 if arguments.get(
+                'valid_articles_duration_days') is None else arguments.get('valid_articles_duration_days')
             if arguments.get('medium_username') is None:
-                raise Exception("Medium username not provided, while read from Medium is true")
-            outputs, df, document_embeddings = get_data_from_medium(arguments.get('medium_username'), duration, protocol_title)
+                raise Exception(
+                    "Medium username not provided, while read from Medium is true")
+            outputs, df, document_embeddings = get_data_from_medium(
+                arguments.get('medium_username'), duration, protocol_title)
             if len(outputs) > 0:
-                send_to_db(protocol_title, 'github', outputs, document_embeddings)
+                send_to_db(protocol_title, 'github',
+                           outputs, document_embeddings)
 
     outputs_from_database, document_embeddings_from_database = retrieve_from_db()
     df_from_database = final_data_for_openai(outputs_from_database)

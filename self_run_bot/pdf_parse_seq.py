@@ -3,6 +3,8 @@ import fitz
 import re
 import numpy as np
 
+# script to parse data from an entire PDF and converting it into MD format
+
 def get_max_header_levels(header_contents):
     max_level = 0
     for key in header_contents:
@@ -10,6 +12,7 @@ def get_max_header_levels(header_contents):
         if key_level > max_level:
             max_level = key_level
     return max_level
+
 
 def get_most_used_font_styles(doc):
     """Extracts fonts and their usage in PDF documents.
@@ -29,11 +32,13 @@ def get_most_used_font_styles(doc):
             if b['type'] == 0:  # block contains text
                 for l in b["lines"]:  # iterate through the text lines
                     for s in l["spans"]:  # iterate through the text spans
-                        identifier = "{0}_{1}_{2}_{3}".format(s['size'], s['flags'], s['font'], s['color'])
+                        identifier = "{0}_{1}_{2}_{3}".format(
+                            s['size'], s['flags'], s['font'], s['color'])
                         styles[identifier] = {'size': s['size'], 'flags': s['flags'], 'font': s['font'],
                                               'color': s['color']}
 
-                        font_counts[identifier] = font_counts.get(identifier, 0) + 1  # count the fonts usage
+                        font_counts[identifier] = font_counts.get(
+                            identifier, 0) + 1  # count the fonts usage
                         total_spans = total_spans + 1
 
     font_counts = sorted(font_counts.items(), key=itemgetter(1), reverse=True)
@@ -43,7 +48,8 @@ def get_most_used_font_styles(doc):
         counts_array.append(value)
 
     para_style_keys = []
-    para_styles_count = max(np.percentile(counts_array, 95), np.average(counts_array))
+    para_styles_count = max(np.percentile(
+        counts_array, 95), np.average(counts_array))
     for key, value in font_counts:
         if value >= para_styles_count:
             para_style_keys.append(key)
@@ -56,7 +62,8 @@ def get_most_used_font_styles(doc):
         if para_style_keys.count(key) != 0:
             para_styles.append(styles[key])
 
-    return para_styles # get styles for most used font by count (paragraph)
+    return para_styles  # get styles for most used font by count (paragraph)
+
 
 def headers_para(doc):
     """Scrapes headers & paragraphs from PDF and return texts with element tags.
@@ -104,32 +111,38 @@ def headers_para(doc):
                                     # Ends with a digit, as sections always end with a digit
                                     # Style is not same as the paragraph style
                                     if re.match('^[0-9\.]*$', block_string.split(" ")[0]) and block_string[:1].isdigit() \
-                                            and not(block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
-                                            # and compare_fonts(para_font_styles, s):
-                                        previous_header_num = header.split(" ")[0]
+                                            and not (block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
+                                        # and compare_fonts(para_font_styles, s):
+                                        previous_header_num = header.split(" ")[
+                                            0]
                                         if validate_new_num(block_string.split(" ")[0], previous_header_num):
                                             header = block_string
                                             header_contents[header] = ''
                                         else:
-                                            header_contents[header] = header_contents[header] + block_string
+                                            header_contents[header] = header_contents[header] + \
+                                                block_string
                                     else:
-                                        header_contents[header] = header_contents[header] + ' ' + block_string
+                                        header_contents[header] = header_contents[header] + \
+                                            ' ' + block_string
                                     block_string = s['text']
 
                                 previous_s = s
                 # is not empty and is not only special characters
                 if block_string != '' and not re.match(r'^[_\W]+$', block_string):
                     if re.match('^[0-9\.]*$', block_string.split(" ")[0]) and block_string[:1].isdigit() \
-                            and not(block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
+                            and not (block_string.strip().isdigit()) and bool(re.search(r'\d+$', block_string.split(" ")[0])):
                         previous_header_num = header.split(" ")[0]
                         if validate_new_num(block_string.split(" ")[0], previous_header_num):
                             header = block_string
                             header_contents[header] = ''
                         else:
-                            header_contents[header] = header_contents[header] + block_string
+                            header_contents[header] = header_contents[header] + \
+                                block_string
                     else:
-                        header_contents[header] = header_contents[header] + block_string
+                        header_contents[header] = header_contents[header] + \
+                            block_string
     return header_contents
+
 
 def compare_fonts(font_styles, s):
     for font_style in font_styles:
@@ -137,16 +150,18 @@ def compare_fonts(font_styles, s):
             return False
     return True
 
+
 def validate_new_num(new_header_num, previous_header_num):
     if new_header_num == previous_header_num:
         return False
-    count_places = min(new_header_num.count('.'), previous_header_num.count('.'))
+    count_places = min(new_header_num.count(
+        '.'), previous_header_num.count('.'))
     i = count_places
     all_digit_same = True
     while i >= 0:
         if new_header_num.split('.')[i] < previous_header_num.split('.')[i]:
             return False
-        if new_header_num.split('.')[i] ==  previous_header_num.split('.')[i]:
+        if new_header_num.split('.')[i] == previous_header_num.split('.')[i]:
             all_digit_same = all_digit_same & True
         else:
             all_digit_same = all_digit_same & False
@@ -155,6 +170,7 @@ def validate_new_num(new_header_num, previous_header_num):
         if new_header_num.count('.') < previous_header_num.count('.'):
             return False
     return True
+
 
 def get_needed_hash(header, max_level):
     req_no_of_hash = header.count(".") + 1
@@ -167,16 +183,20 @@ def get_needed_hash(header, max_level):
         no_hash = no_hash + 1
     return hash_string
 
+
 def create_final_output(header_contents):
     output = ''
     max_level = get_max_header_levels(header_contents)
     for key in header_contents:
         header = key.split(' ', 1)[1]
-        if header.strip()!= '' and header != 'start_of_file':
-            output = output + get_needed_hash(key.split(' ')[0], max_level) + ' ' + header.strip() + '\n'
+        if header.strip() != '' and header != 'start_of_file':
+            output = output + \
+                get_needed_hash(
+                    key.split(' ')[0], max_level) + ' ' + header.strip() + '\n'
         if header_contents[key].strip() != '':
             output = output + header_contents[key].strip() + '\n'
     return output
+
 
 def convert_to_md_format(document):
     doc = fitz.open(document)

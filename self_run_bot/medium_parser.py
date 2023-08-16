@@ -4,6 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 
+# script to scrape data from a user's Medium articles
 
 def remove_all(s, start_ch, end_ch):
     previous_ind = 0
@@ -28,7 +29,7 @@ def remove_all(s, start_ch, end_ch):
             break
     return final_string
 
-
+# scraping the Medium articles published by a user (using their username)
 def get_medium_data(username, valid_articles_duration_days):
     url = "https://api.rss2json.com/v1/api.json?rss_url=https://medium.com/feed/" + username
 
@@ -37,7 +38,7 @@ def get_medium_data(username, valid_articles_duration_days):
     items = response_json['items']
 
     title_stack = []
-    for item in items:
+    for item in items: # for every article published by the user in the specified duration
         title = item['title']
         link = item['guid']
         pub_date = item['pubDate']
@@ -49,7 +50,7 @@ def get_medium_data(username, valid_articles_duration_days):
             title_stack = title_stack + convert_to_stack(final_content, link)
     return title_stack
 
-
+# converting the article contents into our desired format
 def convert_to_stack(final_content, link):
     title_stack = []
     soup = BeautifulSoup(final_content, 'html.parser')
@@ -66,7 +67,7 @@ def convert_to_stack(final_content, link):
     text_btw = find_last(str(soup), str(headings[i]))
     soup1 = BeautifulSoup(text_btw, 'html.parser')
     content_text = soup1.get_text()
-    title_stack.append([header_level, headings[i].get_text(), content_text, link])
+    title_stack.append([header_level, headings[i].get_text(), content_text, link]) # returning a list where each element contains the header level, the heading, its corresponding text, and the URL of the article
     return title_stack
 
 

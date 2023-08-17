@@ -271,8 +271,7 @@ def final_data_for_openai(outputs):
     res += outputs
     df = pd.DataFrame(
         res, columns=["title", "heading", "content", "tokens", "link"])
-    # to ensure really small and insignificant data doesn't get indexed
-    df = df[df.tokens > 10]
+    df = df[df.tokens > 10]    # to ensure really small and insignificant data doesn't get indexed
     df = df.drop_duplicates(['title', 'heading'])
     df = df.reset_index().drop('index', axis=1)  # reset index
     df = df.set_index(["title", "heading"])
@@ -521,7 +520,7 @@ class DiscordBot(multiprocessing.Process):
             
             if message.content.lower().find(config['DISCORD_BOT_USER_ID'].lower()) != -1 or message.clean_content.lower().find('@scarlett') != -1:
                 question = message.content.replace(
-                    '<' + config['DISCORD_BOT_USER_ID'] + '> ', '')  # replace @scarlett with the Discord ID/name of your bot
+                    '<' + config['DISCORD_BOT_USER_ID'] + '> ', '')  # replace @scarlett with the Discord name of your bot
                 # sync_to_async enables execution of parallel bots without any issues
                 answer, links = await sync_to_async(answer_query_with_context)(question, self.df, self.document_embeddings)
                 # answer, links = answer_query_with_context(question, self.df, self.document_embeddings)
@@ -645,6 +644,8 @@ def main():
     read_from_github (boolean) : true if data needs to be read from Github, else false
     github_repo (string) : link to your Github repo containing the docs, mandatory if read_from_github is true (for eg. https://github.com/router-protocol/router-chain-docs)
     github_doc_link (string) : base link for your Github docs (i.e. link with the path from which the docs start, for eg. https://github.com/router-protocol/router-chain-docs/docs)
+    read_from_gitbook_link (boolean): true if data needs to be read from Gitbook docs, else false
+    gitbook_link (string) : link to your Gitbook docs
     read_from_pdf : true if data needs to be read from a PDF document, otherwise false
     pdf_path : link to the PDF, mandatory if read_from_pdf is true
     """

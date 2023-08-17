@@ -191,7 +191,7 @@ def create_final_output(header_contents):
 
 def main():
 
-    document = '/Users/abhisheksomani/Downloads/Dfyn_V2_Whitepaper-pages-4-15.pdf'
+    document = 'PATH_TO_DOCUMENT'
     doc = fitz.open(document)
 
     para_length = get_para_length(doc)

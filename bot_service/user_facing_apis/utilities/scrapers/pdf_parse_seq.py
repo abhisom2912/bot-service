@@ -3,6 +3,8 @@ import fitz
 import re
 import numpy as np
 
+# script to parse data from an entire PDF and converting it into MD format
+
 def get_max_header_levels(header_contents):
     max_level = 0
     for key in header_contents:
@@ -187,10 +189,8 @@ def convert_to_md_format(document, table_of_contents_pages):
     return create_final_output(header_contents)
 
 def main():
-    # print(validate_new_num('3','2.1.1')) Dfyn_V2_Whitepaper-pages-4-15 whitepaper-v3.pdf
-    document = '/Users/abhisheksomani/Downloads/code/resources/Router Protocol_1.pdf'
-    # -pages-7
-    table_of_contents_pages = [2, 3]
+    document = 'PATH_TO_DOCUMENT'
+    table_of_contents_pages = [2, 3] # need to specify the table of contents_pages so that they can be ignored
     print(convert_to_md_format(document, table_of_contents_pages))
 
 

@@ -50,8 +50,7 @@ COMPLETIONS_API_PARAMS = {
 }
 
 
-# Functions to fetch data
-
+# functions to fetch data
 def find_all(s, ch):
     previous_ind = 0
     array = []
@@ -137,7 +136,7 @@ def read_docs(github_repo, github_directory):
                 sample = file_contents.decoded_content.decode()
                 sample = cleanup_data(sample)
 
-                title_stack.append([0, 'start_of_file']) #level, title, content, path
+                title_stack.append([0, 'start_of_file']) # level, title, content, path
                 if sample.split('\n')[0] == '---':
                     title_stack[-1].append('')
                     title_stack[-1].append(file_content.path.replace(github_directory, ''))
@@ -253,7 +252,7 @@ def final_data_for_openai(outputs):
     res = []
     res += outputs
     df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens", "link"])
-    # df = df[df.tokens>10] # was initially 40 (need to ask Abhishek why)
+    df = df[df.tokens>10]   # to ensure really small and insignificant data doesn't get indexed
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
     df = df.set_index(["title", "heading"])
@@ -341,6 +340,7 @@ def add_data_array(file_path, content):
         content = content.split('---')[2]
     last_end = 0
     for t, start, end in title.scan_string(content):
+
         # save content since last title in the last item in title_stack
         title_stack[-1].append(content[last_end:start].lstrip("\n"))
         title_stack[-1].append(file_path)
@@ -358,6 +358,7 @@ def add_data_array(file_path, content):
     title_stack[-1].append(file_path)
     return title_stack
 
+# handling request to get data from Gitbook
 def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     https_str = "https://"
     if gitbook_link[len(gitbook_link)-1] == "/":
@@ -375,6 +376,7 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link, protocol_title):
     print('Embeddings created, sending data to db...')
     return outputs, document_embeddings, cost_incurred
 
+# handling request to get data from a PDF document
 def get_pdf_whitepaper_data(document, table_of_contents_pages, whitepaper_link, protocol_title):
     content = convert_to_md_format(document, table_of_contents_pages)
     title_stack = add_data_array('whitepaper', content)
@@ -386,7 +388,7 @@ def get_pdf_whitepaper_data(document, table_of_contents_pages, whitepaper_link, 
     print('Embeddings created, sending data to db...')
     return outputs, document_embeddings, cost_incurred
 
-
+# handling request to get data from Medium
 def get_data_from_medium(username, valid_articles_duration_days, protocol_title):
     title_stack = get_medium_data(username, valid_articles_duration_days)
     outputs = create_data_for_docs(protocol_title, title_stack, '', 'medium')
@@ -429,8 +431,6 @@ def create_data_for_mod_responses(responses, protocol_title):
 
 
 # Functions to help answer queries
-
-
 def vector_similarity(x: list[float], y: list[float]) -> float:
     """
     Returns the similarity between two vectors.
@@ -511,6 +511,7 @@ def answer_query_with_context(
         **COMPLETIONS_API_PARAMS
     )
 
+    # calculating the cost incurred in using OpenAI to answer the question
     answer_cost = response["usage"]["total_tokens"] * COMPLETIONS_COST / 1000
 
     links = []

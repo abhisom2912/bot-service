@@ -4,6 +4,9 @@ import json
 import sys
 import os
 
+# script to train the bot on questions that were answered directly by the moderator
+# in future, if these questions are asked, they can easily be answered by Scarlett
+
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 BASEDIR = BASEDIR[0:BASEDIR.find('bot_service')] + 'bot_service'
 config = dotenv_values(os.path.join(BASEDIR, '.env'))
@@ -15,12 +18,14 @@ def get_valid_protocol_ids():
     protocol_ids = []
     for protocol in protocols:
         for server in protocol['servers'].keys():
+            # creating a list of protocol_ids that have opted for mod_response_training
             if 'enable_mod_training' in protocol['servers'][server].keys() and \
                     protocol['servers'][server]['enable_mod_training']:
                 protocol_ids.append(protocol['_id'])
     return protocol_ids
 
-
+# executing an API that will train the user's Discord bot from the mod responses
+# a cron job can be setup for this function
 def trigger_training_for_protocols(protocol_ids, reset_flag):
     url = config['BASE_API_URL'] + "data/trainUsingModResponses"
     for protocol_id in protocol_ids:

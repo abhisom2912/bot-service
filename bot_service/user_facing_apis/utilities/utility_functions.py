@@ -9,7 +9,7 @@ posts = nltk.corpus.nps_chat.xml_posts()[:10000]
 start_time = datetime(2020, 5, 17)
 classifier = ''
 
-
+# sending a mail whenever a user's data is uploaded succesfully
 def send_mail(receiver_mail):
     # creates SMTP server
     server = smtplib.SMTP('smtp.gmail.com', 587)
@@ -18,7 +18,7 @@ def send_mail(receiver_mail):
     server.starttls()
 
     # Authentication
-    server.login("scarlettai.official@gmail.com", "uqjbuvftimpwezgv")
+    server.login("scarlettai.official@gmail.com", "KEY_GOES_HERE") # replace the email address with your email address
 
     # Composing the mail
     msg = EmailMessage()
@@ -39,11 +39,9 @@ def untuplify_dict_keys(mapping):
     string_keys = {json.dumps(k): v for k, v in mapping.items()}
     return string_keys
 
-
 def tuplify_dict_keys(string):
     mapping = string
     return {tuple(json.loads(k)): v for k, v in mapping.items()}
-
 
 def dialogue_act_features(post):
     features = {}
@@ -51,13 +49,11 @@ def dialogue_act_features(post):
         features['contains({})'.format(word.lower())] = True
     return features
 
-
 def generate_binary_feature(label):
     if label in ['whQuestion', 'yAnswer', 'ynQuestion']:
         return True
     else:
         return False
-
 
 def check_if_question(text):
     global start_time, classifier

@@ -5,20 +5,25 @@ import openai
 import numpy as np
 from dotenv import dotenv_values
 
+# this script can be used to search the existing question database to answer previously answered questions
+# this will bring down the cost of running such a service by fetching answer to every query via OpenAI matching
+
 EMBEDDING_MODEL = "text-embedding-ada-002"
 config = dotenv_values("../.env")
 openai.api_key = config['OPENAI_API_KEY']
 
+# matching a new query with a set of existing question
 def fuzzy_wuzzy_match(question, list_of_prev_questions):
     Str_A = 'Read the sentence - My name is Ali'
     Str_B = 'My name is Ali'
     ratio = fuzz.token_set_ratio(Str_A, Str_B)
     print(ratio)
 
-    # Get a list of matches ordered by score, default limit to 5
+    # get a list of matches ordered by score, default limit to 5
     print(process.extract(question, list_of_prev_questions))
     print(process.extractOne(question, list_of_prev_questions))
 
+# just to compare the performance, we're seeing how OpenAI performs on the same data
 def open_ai_match(question, list_of_prev_questions):
     question_embedding, question_tokens = get_embedding(question)
     prev_questions_embeddings, cost_incurred = compute_questions_embeddings(list_of_prev_questions)
@@ -34,7 +39,6 @@ def open_ai_match(question, list_of_prev_questions):
 def compute_questions_embeddings(questions):
     """
     Create an embedding for each row in the dataframe using the OpenAI Embeddings API.
-
     Return a dictionary that maps between each embedding vector and the index of the row that it corresponds to.
     """
     embedding_dict = {}
@@ -49,7 +53,6 @@ def compute_questions_embeddings(questions):
 def vector_similarity(x: list[float], y: list[float]) -> float:
     """
     Returns the similarity between two vectors.
-
     Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
     """
     return np.dot(np.array(x), np.array(y))
@@ -65,7 +68,7 @@ def get_embedding(text: str, model: str=EMBEDDING_MODEL):
 def main():
     query = 'what is klima token'
     choices = ['what\'s klima', 'what klima dao', 'what is the klima token', 'what is klima dao']
-    fuzzy_wuzzy_match(query, choices)
+    fuzzy_wuzzy_match(query, choices) # getting the match fr
     open_ai_match(query, choices)
 
 if __name__ == '__main__':

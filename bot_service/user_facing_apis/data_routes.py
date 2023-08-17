@@ -13,13 +13,14 @@ data_router = APIRouter()
 question_router = APIRouter()
 
 EMBEDDING_COST = 0.0004
-COMPLETIONS_COST = 0.03
-THRESHOLD_FOR_FUZZY = 0.98
+# COMPLETIONS_COST = 0.03
+THRESHOLD_FOR_FUZZY = 0.97 # consider two strings to be similar if they have over 97% match
 
 BASE_DIR= os.path.abspath(os.path.dirname(__file__))
 PDF_DIR = BASE_DIR[0:BASE_DIR.find('bot-service')] + 'resources'
 
-
+# calculating outputs and fetching embeddings using OpenAI for the data uploaded by the user
+# we save the outputs and embeddings in our database so as not to calculate them everytime
 def fetch_outputs_and_embeddings(protocol, data_type, datas):
     outputs = []
     document_embeddings = {}
@@ -115,6 +116,7 @@ def fetch_outputs_and_embeddings(protocol, data_type, datas):
     return outputs, document_embeddings, cost
 
 
+# API to save iterable data for a protocol
 @data_router.post("/{user_id}/{protocol_id}", response_description="Create data for a protocol",
                   status_code=status.HTTP_201_CREATED, response_model=Data)
 def create_data(user_id: str, protocol_id: str, request: Request, data: DataFromUser = Body(...)):
@@ -162,7 +164,7 @@ def create_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     return created_data
 
 
-
+# API to update iterable data for a protocol
 @data_router.put("/{user_id}/{protocol_id}", response_description="Update data", response_model=Data)
 def update_data(user_id: str, protocol_id: str, request: Request, data: DataFromUserUpdate = Body(...)):
     protocol = request.app.database["protocols"].find_one({"$and": [{"_id": protocol_id}, {"user_id": user_id}]})
@@ -222,6 +224,8 @@ def update_data(user_id: str, protocol_id: str, request: Request, data: DataFrom
     return updated_data
 
 
+# API to train the user's bot via moderator responses
+# this will allow the bot to learn with information that is not included in the data provided by the user
 @data_router.put("/trainUsingModResponses", response_description="Train using mod responses")
 def train_using_mod_responses(request: Request, protocol_id: str=Body(...), reset: bool=Body(...)):
     protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
@@ -235,7 +239,8 @@ def train_using_mod_responses(request: Request, protocol_id: str=Body(...), rese
     if (protocol['usage'] + 0.2) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
                             detail=f"Insufficient credits to upload this data")
-
+    
+    # only learning from moderator responses in user-specifed Discord servers
     valid_servers_for_training = {key : val for key, val in protocol['servers'].items() if 'enable_mod_training' in val.keys() and val['enable_mod_training']}
     if not reset:
         filtered_arr = [response for response in protocol['mod_responses'] if not response['is_trained']
@@ -288,7 +293,7 @@ def train_using_mod_responses(request: Request, protocol_id: str=Body(...), rese
     protocol = archive_existing_questions(protocol_id, request)
     return {'status' : 'bot successfully trained with mod reponses data'}
 
-
+# API to fetch specific data
 @data_router.get("/{protocol_id}/{data_type}", response_description="Get data by id", response_model=Data)
 def find_data(protocol_id: str, data_type: str, request: Request):
     if (data := request.app.database["data"].find_one(
@@ -297,7 +302,7 @@ def find_data(protocol_id: str, data_type: str, request: Request):
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                         detail=f"Data with protocol ID {protocol_id} not found")
 
-
+# API to delete specific data
 @data_router.delete("/{protocol_id}/{data_type}", response_description="Delete data")
 def delete_data(protocol_id: str, data_type: str, request: Request, response: Response):
     delete_result = request.app.database["data"].delete_one({"$and": [{"_id": protocol_id}, {"data_type": data_type}]})
@@ -308,23 +313,30 @@ def delete_data(protocol_id: str, data_type: str, request: Request, response: Re
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Data with protocol ID {protocol_id} not found")
 
-
+# API to answer a question asked in any server (Discord/TG)
 @question_router.get("/{server_type}/{server_id}/{questioner_server_id}",
                      response_description="Get answer to a question")
 def answer_question_for_server(server_type: str, server_id: str, questioner_server_id: str, question: str,
                                request: Request):
     search_key = 'servers.' + server_type + '.server'
+    # we first fetch the protocol against which the question was asked via its server_id
     protocol = request.app.database["protocols"].find_one({search_key: server_id})
 
     if protocol is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Protocol for {server_type} with server id - {server_id} not found")
+    
+    # adding the questioner's new question to the database (since we rate limit the questioner, its important to maintain a mapping of the questioner's questions)
     update_questioner_data(protocol, question, questioner_server_id, request, server_type)
+    
+    # fetching the answer to the question
     question_answered, answer, links = get_answer(protocol, question, request)
     response = {"question_answered": question_answered, "answer": answer, "links": links}
     return response
 
-
+# API to answer a question asked against a protocol
+# the difference this API endpoint and the previous endpoint is that this endpoint takes only the protocol_id as an argument whereas the aforementioned endpoint fetches the protocol_id based on the server_id
+# this API can be used if the questions are not being asked from a server but being asked via a Widget or directly via an API call
 @question_router.get("/{protocol_id}", response_description="Get answer to a question")
 def answer_question(protocol_id: str, question: str, request: Request):
     protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
@@ -335,7 +347,10 @@ def answer_question(protocol_id: str, question: str, request: Request):
     response = {"question_answered": question_answered, "answer": answer, "links": links}
     return response
 
-
+# calculating the answer to a question based on a protocol's data
+# we first check if the question already exists in the question/answer set in the database
+# if true, we relay the saved answer to the questioner (cheaper)
+# if false, we use OpenAI to fetch the answer from the user-uploaded data (a little expensive)
 def get_answer(protocol, question, request):
     if not protocol['active']:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -343,7 +358,7 @@ def get_answer(protocol, question, request):
     data_from_db = request.app.database["data"].find({"protocol_id": protocol['_id']})
     if (protocol['usage'] + 0.4) > protocol['credits']:
         raise HTTPException(status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                            detail=f"Insufficient credits to upload this data")
+                            detail=f"Insufficient credits to answer this question")
     if data_from_db is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"Data for protocol with ID {protocol['_id']} not found")
@@ -389,7 +404,8 @@ def get_answer(protocol, question, request):
     question_answered = False if answer == protocol['default_answer'] else True
     return question_answered, answer, links
 
-
+# archiving question/answer sets that are no longer needed
+# while answering previously asked questions, Scarlett won't iterate through archived questions
 def archive_existing_questions(protocol_id, request):
     protocol = request.app.database["protocols"].find_one({"_id": protocol_id})
     protocol['archived_questions'] = protocol['archived_questions'] + protocol['questions']
@@ -399,7 +415,7 @@ def archive_existing_questions(protocol_id, request):
     )
     return request.app.database["protocols"].find_one({"_id": protocol_id})
 
-
+# adding the questioner's new question in the mapping present in the database
 def update_questioner_data(protocol, question, questioner_server_id, request, server_type):
     rate_limit_exists = False
     try:
@@ -451,14 +467,14 @@ def update_questioner_data(protocol, question, questioner_server_id, request, se
             )
 
 
-
+# API to get an answer to a question using aggregated data from all uploaded protocol
 @question_router.get("/masterApi/getAnswerFromAnyProtocol", response_description="Get answer to a question")
 def answer_question(question: str, request: Request):
     question_answered, answer, links = get_answer_all_protocols(question, request)
     response = {"question_answered": question_answered, "answer": answer, "links": links}
     return response
 
-
+# calculating the answer to a question based on data uploaded across all protocols
 def get_answer_all_protocols(question, request):
     default_answer = 'I am not sure of this. Please check with the admin!'
     data_from_db = request.app.database["data"].find()

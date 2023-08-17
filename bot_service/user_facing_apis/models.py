@@ -2,7 +2,7 @@ import uuid
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 
-
+# schema to follow while saving details of an interested user
 class ContactUs(BaseModel):
     contactus_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     name: str = Field(default="Name unknown")
@@ -20,7 +20,7 @@ class ContactUs(BaseModel):
             }
         }
 
-
+# schema to follow while adding a registered user
 class User(BaseModel):
     user_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     email: EmailStr
@@ -34,7 +34,7 @@ class User(BaseModel):
             }
         }
 
-
+# schema to follow while updating the details of a registered user
 class UserUpdate(BaseModel):
     email: Optional[str]
 
@@ -45,7 +45,7 @@ class UserUpdate(BaseModel):
             }
         }
 
-
+# schema to follow while the details of a questioner (to enforce rate limit and prevent any questioner from abusing the system)
 class Questioner(BaseModel):
     questioner_id: str = Field(..., alias="_id")
     server_type: str = Field(...)
@@ -74,7 +74,7 @@ class Questioner(BaseModel):
             }
         }
 
-
+# schema to follow while updating the details of a questioner
 class QuestionerUpdate(BaseModel):
     server_type: Optional[str]
     questioner_server_id: Optional[str]
@@ -99,7 +99,7 @@ class QuestionerUpdate(BaseModel):
             }
         }
 
-
+# schema to follow while adding a protocol
 class Protocol(BaseModel):
     protocol_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     user_id: str = Field(...)
@@ -114,8 +114,7 @@ class Protocol(BaseModel):
     default_answer: str = Field(
         default="I don't know. Please check with admin.")
     questions: list = Field(default={})
-    # moving irrelevant/past answered questions to archvied questions so that we don't use them to answer
-    archived_questions: list = Field(default={})
+    archived_questions: list = Field(default={}) # in case you don't want to use the saved answer to a question, you can move the question here
     active: bool = Field(default=True)
     mod_responses: list = Field(default={})
 
@@ -169,7 +168,7 @@ class Protocol(BaseModel):
             }
         }
 
-
+# schema to follow while updating the details of a protocol
 class ProtocolUpdate(BaseModel):
     protocol_name: Optional[str]
     protocol_description: Optional[str]
@@ -231,7 +230,8 @@ class ProtocolUpdate(BaseModel):
             }
         }
 
-
+# schema to follow while adding data (using which the bot will be trained) against a protocol
+# this is how the data will be saved in the database
 class Data(BaseModel):
     data_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     protocol_id: str = Field(...)
@@ -251,7 +251,7 @@ class Data(BaseModel):
             }
         }
 
-
+# schema to follow while posting the updated data to the database
 class DataUpdate(BaseModel):
     data: Optional[list]
     embeddings: Optional[dict]
@@ -266,7 +266,8 @@ class DataUpdate(BaseModel):
             }
         }
 
-
+# schema to follow while taking data from the user
+# this is not how the data will be saved in the database
 class DataFromUser(BaseModel):
     data_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     data: dict = Field(...)
@@ -285,7 +286,7 @@ class DataFromUser(BaseModel):
             }
         }
 
-
+# schema to follow while taking updated data from the user
 class DataFromUserUpdate(BaseModel):
     data: dict = Field(...)
     append: bool = Field(default=True)
@@ -295,11 +296,11 @@ class DataFromUserUpdate(BaseModel):
         schema_extra = {
             "example": {
                 "data": {},
-                "append": True,
+                "append": True, # If True, new data will be appended to the existing data; if False, new data will replace the existing data
             }
         }
 
-
+# schema to follow while saving the payment details for a protocol
 class Payment(BaseModel):
     payment_id: str = Field(default_factory=uuid.uuid4, alias="_id")
     protocol_id: str = Field(...)
@@ -322,7 +323,7 @@ class Payment(BaseModel):
             }
         }
 
-
+# schema to follow while updating the payment details for a protocol
 class PaymentUpdate(BaseModel):
     protocol_id: Optional[str]
     payment_details: Optional[dict]

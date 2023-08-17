@@ -5,7 +5,9 @@ from dotenv import dotenv_values
 import requests
 import json
 
-config = dotenv_values("bot_service/.env")
+config = dotenv_values("../.env")
+
+# not enforcing rate limit on exempted servers
 list_of_exempted_server_ids = config['EXEMPTED_SERVER_IDS'].split(',') if \
     'EXEMPTED_SERVER_IDS' in config.keys() is not None else []
 
@@ -42,9 +44,10 @@ def update_mod_response(question, response, server_id):
         "question": question,
         "response": response
     }
+    # saving the response of the moderator in our database
     requests.put(config['BASE_API_URL'] + "protocol/addResponse", json.dumps(body))
 
-
+# starting the discord_bot that will answer questions asked by the protocol's community
 def start_discord_bot():
     intents = discord.Intents.default()
     intents.message_content = True
@@ -60,12 +63,14 @@ def start_discord_bot():
         if message.author == client.user:
             return
 
-        if message.content.lower().find('@1072338244085227623'.lower()) != -1 or message.clean_content.lower().find('@scarlett') != -1:
+        if message.content.lower().find(config['DISCORD_BOT_USER_ID'].lower()) != -1 or message.clean_content.lower().find('@scarlett') != -1:
             question = message.clean_content.replace('@scarlett', '').strip()
             title = "Q: " + question
+             # sync_to_async enables execution of parallel bots without any issues
             question_answered, answer, links = await sync_to_async(get_answer)(question, str(message.guild.id), str(message.author.id))
             link_number = 1
             link_text = ''
+            # attaching relevant links with the answer
             for link in links:
                 if link_number == 1:
                     link_text = ' [Link' + str(link_number) + '](' + link + ')'

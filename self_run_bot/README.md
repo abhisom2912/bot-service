@@ -1,7 +1,7 @@
 # Self Run Bot - Scarlett
 
 ## 1. Brief Introduction
-This repo allows you to run your own Discord bot (Scarlett) to answer the queries asked by your community. You can also extend the scope of this repo and add code to allow people to ask question from other sources, for eg. Telegram (refer to bot_service/wip/telegram_bot_openai.py) or via API calls. In the background, Scarlett uses OpenAI to match the query against your documentation and fetch the best possible answer to it.
+This repo allows you to run your own Discord bot (Scarlett) to answer the queries asked by your community. You can also extend the scope of this repo and add code to allow people to ask question from other sources, for eg. Telegram (you can make use of our wip code given [here](../bot_service/wip/telegram_bot_openai.py)) or via API calls. In the background, Scarlett uses OpenAI to match the query against your documentation and fetch the best possible answer to it.
 
 What sets Scarlett apart from other AI chatbots is its ability to provide high-quality, objective answers with the proper context. Instead of indexing information from the entire internet, Scarlett is trained with your project’s documentation from GitBook, Docusaurus, Medium, and PDF documents like whitepapers, among other things. This ensures that Scarlett maintains the latest information on your project. Whenever anyone asks Scarlett for any information related to your project, it will provide a concise response along with relevant links where the user can get more information about the question asked.
 
@@ -32,7 +32,7 @@ python3 -m uvicorn mongo_server:app --reload
 
 **Step 6)** After running the mongo server using the command given above, you can check out the Swagger generated API docs here: http://127.0.0.1:8000/docs#/ or the FastAPI generated API docs here: http://127.0.0.1:8000/redoc 
 
-**Step 7)** Run the python script after running the mongo server (in a separate terminal). To do so, run the following command in the `self_run_bot` directory:
+**Step 7)** Run the bot after running the mongo server (in a separate terminal). To do so, run the following command in the `self_run_bot` directory:
 ```bash
 python3 all_bot_openai_py310.py
 ```

@@ -208,7 +208,7 @@ def final_data_for_openai(outputs):
     res = []
     res += outputs
     df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
-    df = df[df.tokens>40]
+    df = df[df.tokens>10]    # to ensure really small and insignificant data doesn't get indexed
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
     return df
@@ -279,7 +279,6 @@ def load_embeddings(fname: str) -> Dict[Tuple[str, str], List[float]]:
 def vector_similarity(x: List[float], y: List[float]) -> float:
     """
     Returns the similarity between two vectors.
-
     Because OpenAI Embeddings are normalized to length 1, the cosine similarity is the same as the dot product.
     """
     return np.dot(np.array(x), np.array(y))
@@ -288,7 +287,6 @@ def order_document_sections_by_query_similarity(query: str, contexts: Dict[Tuple
     """
     Find the query embedding for the supplied query, and compare it against all of the pre-calculated document embeddings
     to find the most relevant sections.
-
     Return the list of document sections, sorted by relevance in descending order.
     """
     query_embedding = get_embedding(query)
@@ -301,7 +299,7 @@ def order_document_sections_by_query_similarity(query: str, contexts: Dict[Tuple
 
 def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) -> str:
     """
-    Fetch relevant
+    Fetch relevant parts of the data
     """
     most_relevant_document_sections = order_document_sections_by_query_similarity(question, context_embeddings)
 
@@ -324,7 +322,7 @@ def construct_prompt(question: str, context_embeddings: dict, df: pd.DataFrame) 
     print("Selected {len(chosen_sections)} document sections:")
     print("\n".join(chosen_sections_indexes))
 
-    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know."\n\nContext:\n"""
+    header = """Answer the question as truthfully as possible using the provided context, and if the answer is not contained within the text below, say "I don't know the answer to this question."\n\nContext:\n"""
 
     return header + "".join(chosen_sections) + "\n\n Q: " + question + "\n A:"
 

@@ -53,10 +53,9 @@ def find_last(s, first):
         return ""
 
 # scraping the Gitbook data
-
-
 def get_gitbook_data(base_url, first_url):
     title_stack = []
+    
     # getting all the paths in your documentation using the base URL and the path of the first page
     all_page_urls = get_all_page_urls(base_url, first_url)
 

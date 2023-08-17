@@ -1,4 +1,4 @@
-
+from asgiref.sync import sync_to_async
 import discord
 from transformers import GPT2TokenizerFast
 import sys
@@ -21,8 +21,8 @@ import ssl
 import gspread
 from itertools import islice
 
-from gitbook_scraper import *
-from pdf_parse_seq import *
+from gitbook_scraper import * # import from the self_run_bot folder since we have removed gitbook_scraper.py from this folder
+from pdf_parse_seq import * # import from the self_run_bot folder since we have removed pdf_parse_seq.py from this folder
 
 try:
     _create_unverified_https_context = ssl._create_unverified_context
@@ -36,8 +36,8 @@ config = dotenv_values("../.env")
 
 openai.api_key = config['OPENAI_API_KEY']
 
-TOKEN = "5922680401:AAEKq1oh0hP1RBky4ymL7lbXzhqnfTCRc3Q"
-URL = "https://api.telegram.org/bot{}/".format(TOKEN)
+TELEGRAM_TOKEN = config['TELEGRAM_TOKEN']
+TELEGRAM_API_URL = "https://api.telegram.org/bot{}/".format(TELEGRAM_TOKEN)
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 COMPLETIONS_MODEL = "text-davinci-003"
 EMBEDDING_MODEL = "text-embedding-ada-002"
@@ -52,10 +52,8 @@ separator_len = len(encoding.encode(SEPARATOR))
 # f"Context separator contains {separator_len} tokens"
 
 
-bot_id = "1"
+protocol_id = "1"
 bot_description = "Router protocol relayer info"
-SHEET_ID = '1ve2d13qfafxTm-Gz6Hl1535Xag-ZWbHUU9-FhFe3GKw'
-SHEET_NAME = 'Data Upload'
 
 
 COMPLETIONS_API_PARAMS = {
@@ -237,7 +235,7 @@ def final_data_for_openai(outputs):
     res = []
     res += outputs
     df = pd.DataFrame(res, columns=["title", "heading", "content", "tokens"])
-    # df = df[df.tokens>10] # was initially 40 (need to ask Abhishek why)
+    df = df[df.tokens > 10]   # to ensure really small and insignificant data doesn't get indexed
     df = df.drop_duplicates(['title','heading'])
     df = df.reset_index().drop('index',axis=1) # reset index
     df = df.set_index(["title", "heading"])
@@ -413,8 +411,8 @@ def calculate_new_output(title, heading, content):
 
     return outputs
 
-def add_data(bot_id, title, heading, content):
-    outputs, embeddings = retrieve_from_db(bot_id)
+def add_data(protocol_id, title, heading, content):
+    outputs, embeddings = retrieve_from_db(protocol_id)
     # check to ensure that the output does not already include this entry
     for x in outputs:
         if(title == x[0] and heading == x[1] and content == x[2]):
@@ -429,10 +427,10 @@ def add_data(bot_id, title, heading, content):
     outputs.extend(new_outputs)
     # append the new embedding to the embedding in the database
     embeddings.update(new_document_embeddings)
-    return update_in_db(outputs, embeddings, bot_id)
+    return update_in_db(outputs, embeddings, protocol_id)
 
-def update_data(bot_id, title, heading, updated_content):
-    outputs, embeddings = retrieve_from_db(bot_id)
+def update_data(protocol_id, title, heading, updated_content):
+    outputs, embeddings = retrieve_from_db(protocol_id)
     index_to_delete = -1
     for i, x in enumerate(outputs):
         if(title == x[0] and heading == x[1]):
@@ -451,10 +449,10 @@ def update_data(bot_id, title, heading, updated_content):
         embeddings.update(new_document_embeddings)
         # deleting the existing entry
         updated_outputs, updated_embeddings = delete_entries_by_index(outputs, embeddings, index_to_delete)
-    return update_in_db(updated_outputs, updated_embeddings, bot_id)
+    return update_in_db(updated_outputs, updated_embeddings, protocol_id)
 
-def delete_data(bot_id, title, heading):
-    outputs, embeddings = retrieve_from_db(bot_id)
+def delete_data(protocol_id, title, heading):
+    outputs, embeddings = retrieve_from_db(protocol_id)
     index_to_delete = -1
     for i, x in enumerate(outputs):
         if(title == x[0] and heading == x[1]):
@@ -462,7 +460,7 @@ def delete_data(bot_id, title, heading):
     if index_to_delete<0:
         return "Title and heading not found"
     updated_outputs, updated_embeddings = delete_entries_by_index(outputs, embeddings, index_to_delete)
-    return update_in_db(updated_outputs, updated_embeddings, bot_id)
+    return update_in_db(updated_outputs, updated_embeddings, protocol_id)
 
 def delete_entries_by_index(outputs, embeddings, index):
     outputs.pop(index)
@@ -480,7 +478,7 @@ def get_json_from_url(url):
     return js
 
 def get_updates(offset=None):
-    url = URL + "getUpdates?timeout=100"
+    url = TELEGRAM_API_URL + "getUpdates?timeout=100"
     if offset:
         url += "&offset={}".format(offset)
     js = get_json_from_url(url)
@@ -504,7 +502,7 @@ def echo_all(updates, df, document_embeddings):
 def send_message(text, chat_id, df, document_embeddings):
     print(text)
     response = answer_query_with_context(text, df, document_embeddings)
-    url = URL + "sendMessage?text={}&chat_id={}".format(response, chat_id)
+    url = TELEGRAM_API_URL + "sendMessage?text={}&chat_id={}".format(response, chat_id)
     get_url(url)
 
 class TelegramBot(multiprocessing.Process):
@@ -544,12 +542,13 @@ class DiscordBot(multiprocessing.Process):
             print(message.content)
             if message.author == client.user:
                 return
-
-            if message.content.lower().find('@1064872402003169312'.lower()) != -1:
+            
+            if message.content.lower().find(config['DISCORD_BOT_USER_ID'].lower()) != -1:
+            # replace @scarlett with the Discord name of your bot
                 answer = answer_query_with_context(message.content, self.df, self.document_embeddings)
                 await message.channel.send(answer)
-                question  = message.content.replace('<@1064872402003169312> ', '')
-                send_question_to_db(bot_id, question, answer)
+                question = message.content.replace('<' + config['DISCORD_BOT_USER_ID'] + '> ', '')
+                send_question_to_db(protocol_id, question, answer)
 
         client.run(config['DISCORD_TOKEN'])
 
@@ -561,16 +560,19 @@ def tuplify_dict_keys(string):
     mapping = string
     return {tuple(json.loads(k)): v for k, v in mapping.items()}
 
-def send_question_to_db(bot_id, question, answer):
-    data_to_post = {"bot_id": bot_id, "question": question, "answer": answer}
+def send_question_to_db(protocol_id, question, answer):
+    data_to_post = {"protocol_id": protocol_id, "question": question, "answer": answer}
     response = requests.post(config['BASE_API_URL'] + "question/", json=data_to_post)
     return response
 
+# adding data to the database
 def send_to_db(_id, description, outputs, document_embeddings):
     data_to_post = {"_id": _id, "description": description, "data": outputs, "embeddings": untuplify_dict_keys(document_embeddings)}
     response = requests.post(config['BASE_API_URL'] + "document/", json=data_to_post)
     return response
 
+
+# fetching outputs and embeddings from the database
 def retrieve_from_db(_id):
     response = requests.get(config['BASE_API_URL'] + "document/" + _id)
     json_response = response.json()
@@ -583,10 +585,10 @@ def update_in_db(outputs, embeddings, _id):
     data_to_update = {"data": outputs, "embeddings": untuplify_dict_keys(embeddings)}
     response = requests.put(config['BASE_API_URL'] + "document/" + _id, json=data_to_update)
     return response
-
-def add_data_from_sheet(bot_id, sheet_id, sheet_name):
-    # TODO - Fix the below line
-    gc = gspread.service_account('./credentials.json')
+        
+# to add data from google sheet        
+def add_data_from_sheet(protocol_id, sheet_id, sheet_name):
+    gc = gspread.service_account('PATH_TO_CREDENTIALS.JSON')
     spreadsheet = gc.open_by_key(sheet_id)
     worksheet = spreadsheet.worksheet(sheet_name)
     rows = worksheet.get_all_records()
@@ -597,7 +599,7 @@ def add_data_from_sheet(bot_id, sheet_id, sheet_name):
     for index, data in df.iterrows():
         if data['Uploaded'] == 'No' or data['Uploaded'] == '':
             # Upload to df and embeddings
-            add_data(bot_id, data['Title'], data['Heading'], data['Content'])
+            add_data(protocol_id, data['Title'], data['Heading'], data['Content'])
 
             # Recreate the df to upload back to the gsheet
             data_dict['Title'] = data['Title']
@@ -606,7 +608,7 @@ def add_data_from_sheet(bot_id, sheet_id, sheet_name):
             data_dict['Uploaded'] = 'Yes'
             print(data_dict)
             data_df = pd.DataFrame([data_dict])
-            upload_df = pd.concat([upload_df, data_df])
+            upload_df = pd.concat([upload_df, data_df])            
 
 def add_data_array(file_path, content):
     title_stack = []
@@ -649,11 +651,11 @@ def get_data_from_gitbook(gitbook_data_type, gitbook_link):
     print('Embeddings created, sending data to db...')
     return outputs, df, document_embeddings
 
-def get_whitepaper_data(type, document):
+def get_pdf_data(type, document):
     content = convert_to_md_format(document)
     title_stack = add_data_array(type, content)
     outputs = create_data_for_docs(title_stack)
-    print('Outputs created for whitepaper data')
+    print('Outputs created for PDF data')
     df = final_data_for_openai(outputs)
     print(df.head)
     df = df.set_index(["title", "heading"])
@@ -672,24 +674,30 @@ def read_command_line_params():
     return arguments
 
 def main():
-    # Parameters for the command line
-    # bot_id - bot id for which the data needs to be uploaded
-    # bot_description - bot description for which data is being uploaded
-    # reset_bot | first_start - in case you want to rerun the initial data upload in the db
-    # read_from_github - true/false based on if data needs to be read by github
-    # github_repo - mandatory field if read_from_github is true
-    # protocol_title - protocol name, used for github upload
-    # read_from_gitbook_link - true/false based on if data needs to be read by gitbook link
-    # gitbook_link - mandatory field if read_from_gitbook_link is true
-    # gitbook_data_type - type of data being uploaded from gitbook, whitepaper, general oc, faq etc.
-    # read_from_whitepaper - true/false based on if data needs to be read from whitepaper
-    # whitepaper_path - mandatory field if read_from_whitepaper is true
+    """Parameters to provide from the command line
+    protocol_id (string): protocol_id for which the data needs to be uploaded
+    protocol_description (string) : description of the protocol for which data is being uploaded
+    reset_bot | first_start : if you're uploading the data for the first time or if you want upload entirely new data and forget old data
+    read_from_github (boolean) : true if data needs to be read from Github, else false
+    github_repo (string) : link to your Github repo containing the docs, mandatory if read_from_github is true (for eg. https://github.com/router-protocol/router-chain-docs)
+    protocol_title : protocol name, used while uploading data from Github
+    read_from_gitbook_link (boolean): true if data needs to be read from Gitbook docs, else false
+    gitbook_link (string) : link to your Gitbook docs, mandatory if read_from_gitbook_link is true
+    gitbook_data_type : the type of data being uploaded from Gitbook - whitepaper, dev docs, FAQs etc.
+    read_from_pdf : true if data needs to be read from a PDF document, otherwise false
+    pdf_path : link to the PDF, mandatory if read_from_pdf is true
+    read_from_sheet: true if data needs to be read from a Google sheet, else false
+    sheet_id: ID of the Google Sheet from which the data is to be read, mandatory if read_from_sheet is true
+    sheet_name: name of the spreadsheet from which the data is to be read, mandatory if read_from_sheet is true
+    """
+
     arguments = read_command_line_params()
-    bot_id = arguments['bot_id']
+    protocol_id = arguments['protocol_id']
     bot_description = arguments['bot_description']
     protocol_title = arguments['protocol_title']
     outputs = []
 
+    # if the user is uploading data for the first time or wants to reupload the data from scratch
     if arguments['reset_bot'].lower == 'true' or arguments['first_start'].lower == 'true':
         if arguments['read_from_github'].lower == 'true':
             try:
@@ -698,44 +706,44 @@ def main():
                 raise Exception("Github link not provided, while read from github is true")
             outputs, df, document_embeddings = read_from_github(protocol_title, github_repo)
             if len(outputs) > 0:
-                send_to_db(bot_id, bot_description, outputs, document_embeddings)
+                send_to_db(protocol_id, bot_description, outputs, document_embeddings)
 
         if arguments['read_from_gitbook_link'].lower == 'true':
             try:
                 gitbook_link = arguments['gitbook_link']
             except KeyError:
-                raise Exception("Gitbook link not provided, while read from gitbook is true")
+                raise Exception("Gitbook link not provided, while read_from_gitbook_link is true")
             try:
                 gitbook_data_type = arguments['gitbook_data_type']
             except KeyError:
                 gitbook_data_type = 'Whitepaper'
             outputs, df, document_embeddings = get_data_from_gitbook(gitbook_data_type, gitbook_link)
             if len(outputs) > 0:
-                send_to_db(bot_id, bot_description, outputs, document_embeddings)
+                send_to_db(protocol_id, bot_description, outputs, document_embeddings)
 
-        if arguments['read_from_whitepaper'].lower == 'true':
+        if arguments['read_from_pdf'].lower == 'true':
             try:
-                whitepaper_path = arguments['whitepaper_path']
+                pdf_path = arguments['pdf_path']
             except KeyError:
-                raise Exception("Whitepaper path not provided, while read from whitepaper is true")
-            outputs, df, document_embeddings = get_whitepaper_data('Whitepaper', whitepaper_path)
+                raise Exception("PDF path not provided, while read_from_pdf is true")
+            outputs, df, document_embeddings = get_pdf_data('PDF', pdf_path)
             if len(outputs) > 0:
-                send_to_db(bot_id, bot_description, outputs, document_embeddings)
+                send_to_db(protocol_id, bot_description, outputs, document_embeddings)
 
 
     if arguments['read_from_sheet'].lower == 'True'.lower():
         sheet_id = arguments['sheet_id']
         sheet_name = arguments['sheet_name']
-        add_data_from_sheet(bot_id, sheet_id, sheet_name)
+        add_data_from_sheet(protocol_id, sheet_id, sheet_name)
 
 
     # p = TelegramBot(df, document_embeddings)
     # p.start()
-    outputs_from_database, document_embeddings_from_database = retrieve_from_db(bot_id)
+    outputs_from_database, document_embeddings_from_database = retrieve_from_db(protocol_id)
     df_from_database = final_data_for_openai(outputs_from_database)
     p = DiscordBot(df_from_database, document_embeddings_from_database)
     p.start()
-    # response_after_deleting_data = delete_data(bot_id, "Router Protocol - Voyager", "What is Voyager?")
+    
     
 
 
